@@ -1,4 +1,4 @@
-_BASE_: vitl_336.yaml
+_BASE_: vitb_384.yaml # change to base model (vitb) for base adapters??
 SOLVER:
   CHECKPOINT_PERIOD: 100000
   IMS_PER_BATCH: 4
