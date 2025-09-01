@@ -13,11 +13,14 @@ if __name__ == "__main__":
     parser.add_argument("--source_domains_file", type=str, required=True)
     # Path to the lora library where the statistics will be stored
     parser.add_argument("--lora_library_path", type=str, required=True)
+    # Flag to enable text embedding generation
+    parser.add_argument("--use_text", action="store_true")
 
     # Parse arguments
     args = parser.parse_args()
     source_domains_file = Path(args.source_domains_file)
     lora_library_path = Path(args.lora_library_path)
+    use_text = args.use_text
 
     with open(source_domains_file, "r") as f:
         source_domains = yaml.safe_load(f)
@@ -25,7 +28,10 @@ if __name__ == "__main__":
     embedding_manager = None
 
     print("Generating embeddings for all source domains ...")
+    if use_text:
+        print("Generating text embeddings also ...")
     
+    # how will this change now that we need to generate text embeddings as well?
     for domain_name in source_domains:
 
         args = get_domain_args(domain_name, "train", get_cofing_only=True)
@@ -36,7 +42,7 @@ if __name__ == "__main__":
 
         if embedding_manager is None:
             from domain_orchestrator import embedding
-            embedding_manager = embedding.EmbeddingManager()
+            embedding_manager = embedding.EmbeddingManager(use_text=use_text)
 
         domain_path = lora_library_path / Path(domain_name)
 
