@@ -4,6 +4,9 @@ import numpy as np
 import numpy.typing as npt
 import torch
 from PIL import Image
+import json
+import hashlib
+from pathlib import Path
 
 
 #abstract class
@@ -30,8 +33,10 @@ class ClipEmbeddingModel(EmbeddingModel):
         # Initialize the vlm only if text embedding is needed
         if self.use_text:
             self.llava_model = LlavaForConditionalGeneration.from_pretrained(
-                "llava-hf/llava-1.5-7b-hf"
-            ).to("cuda")
+                "llava-hf/llava-1.5-7b-hf",
+                torch_dtype=torch.float16,
+                device_map="auto"
+            )
             self.llava_processor = LlavaProcessor.from_pretrained(
                 "llava-hf/llava-1.5-7b-hf"
             )
@@ -62,6 +67,62 @@ class ClipEmbeddingModel(EmbeddingModel):
             )
         return image_embeddings
 
+    def generate_captions_batch(self, image_paths, batch_size=4) -> list:
+        """Generate captions for multiple images in batches."""
+        if not self.use_text:
+            raise ValueError("Text generation is not enabled. Initialize with use_text=True.")
+        
+        all_captions = []
+        
+        # Process images in batches
+        from tqdm import tqdm
+        for i in tqdm(range(0, len(image_paths), batch_size), desc="Generating captions in batches"):
+            batch_paths = image_paths[i:i + batch_size]
+            batch_images = []
+            
+            # Load batch of images
+            for image_path in batch_paths:
+                try:
+                    image = Image.open(image_path).convert("RGB")
+                    batch_images.append(image)
+                except Exception as e:
+                    raise ValueError(f"Error loading image {image_path}: {e}")
+            
+            # Prepare batch inputs
+            prompt_formatted = self.llava_processor.apply_chat_template(self.conversation, tokenize=False, add_generation_prompt=True)
+            inputs = self.llava_processor(images=batch_images, text=[prompt_formatted] * len(batch_images), return_tensors="pt").to(self.llava_model.device)
+            
+            print(f"Processing batch of {len(batch_images)} images")
+            
+            with torch.no_grad():
+                outputs = self.llava_model.generate(
+                    **inputs, 
+                    max_new_tokens=77,
+                    pad_token_id=self.llava_processor.tokenizer.pad_token_id
+                )
+            
+            # Decode captions for valid images
+            # check if this input token length logic is correct or not
+            print(f"type and shape of inputs is : {type(inputs)}, {inputs['input_ids'].shape}")
+            print(f"type and shape of outputs is : {type(outputs)}, {outputs.shape}")
+            input_token_length = inputs["input_ids"].shape[1]
+            batch_captions = []
+            
+            for j, output in enumerate(outputs):
+                generated_tokens = output[input_token_length:]
+                generated_text = self.llava_processor.tokenizer.decode(generated_tokens, skip_special_tokens=True)
+                # Remove multiple spaces between words in generated_text, but why's this happening?
+                generated_text = " ".join(generated_text.strip().split())
+                #print(f"checking if generated text is correct: {generated_text}")
+                batch_captions.append(generated_text)
+            
+            
+            all_captions.extend(batch_captions)
+            
+            print(f"Generated {len(batch_captions)} captions for batch")
+        
+        return all_captions
+
     def generate_caption(self, image_path) -> str:
         """Generate a caption for a single image."""
         try:
@@ -79,10 +140,15 @@ class ClipEmbeddingModel(EmbeddingModel):
 
         with torch.no_grad():
             # 77 is the max number of tokens that clip text encoder can handle
+            #import time
+            #start_time = time.time()
+            # this takes 7.5 seconds now for a single image
             outputs = (
                 self.llava_model.generate(**inputs, max_new_tokens=77,
                 pad_token_id = self.llava_processor.tokenizer.pad_token_id)
             )
+            #print(f"Time taken to generate outputs from the llava model: {time.time() - start_time} seconds")
+
         input_token_length = inputs["input_ids"].shape[1]
         generated_tokens = outputs[0][input_token_length:]
         generated_text = self.llava_processor.tokenizer.decode(generated_tokens, skip_special_tokens=True)
@@ -109,8 +175,20 @@ class EmbeddingManager:
     def __init__(self, use_text: bool=False, image_weight: float=0.5, text_weight: float=0.5):
         self.embedding_model = ClipEmbeddingModel(use_text=use_text)
         self.use_text = use_text
+        
+        # Weights for combining image and text embeddings
         self.image_weight = image_weight
         self.text_weight = text_weight
+        
+        # Normalize weights to ensure they sum to 1
+        total_weight = image_weight + text_weight
+        self.image_weight = image_weight / total_weight
+        self.text_weight = text_weight / total_weight
+        
+        if self.use_text:
+            print(f"Using embedding weights - Image: {self.image_weight:.2f}, Text: {self.text_weight:.2f}")
+        else:
+            print("Using image embeddings only")
     
     def embed_image(self, image_path) -> npt.NDArray:
         """Embed a single image."""
@@ -118,7 +196,10 @@ class EmbeddingManager:
 
     def embed_text_for_image(self, image_path) -> npt.NDArray:
         """Generate caption for an image and embed the caption."""
+        import time
+        start_time = time.time()
         caption = self.embedding_model.generate_caption(image_path)
+        print(f"Time taken to generate caption: {time.time() - start_time} seconds")
 
         return self.embedding_model.embed_text(caption)
     
@@ -140,27 +221,37 @@ class EmbeddingManager:
             return []
 
         from tqdm import tqdm
-        for img in tqdm(image_files, desc="Embedding images"):
+        
+        # First, generate all image embeddings
+        for img in tqdm(image_files, desc="Generating image embeddings"):
             embedding = self.embed_image(img)
             print(f"Shape and type of image embedding is: {embedding.shape}, {type(embedding)}")
             if embedding is not None:
                 dataset_embeddings.append(embedding)
             else:
                 raise ValueError(f"Error embedding image '{img}'.")
+        
+        # Then, generate all text embeddings in batches if use_text is enabled
+        if self.use_text:
+            print("Generating text embeddings in batches...")
+            captions = self.embedding_model.generate_captions_batch(image_files, batch_size=128)
             
-            if self.use_text:
-                cache_path = dataset_path / "caption_cache"
-                print(f"Cache path is: {cache_path}")
-                caption_embedding = self.embed_text_for_image(img)
-                print(f"Shape and type of text embedding is : {caption_embedding.shape}, {type(caption_embedding)}")
-                if caption_embedding is not None:
-                    dataset_text_embeddings.append(caption_embedding)
+            for i, (img, caption) in enumerate(tqdm(zip(image_files, captions), desc="Generating text embeddings", total=len(image_files))):
+                if caption:  # Only process if caption was generated successfully
+                    caption_embedding = self.embedding_model.embed_text(caption)
+                    print(f"Shape and type of text embedding is : {caption_embedding.shape}, {type(caption_embedding)}")
+                    if caption_embedding is not None:
+                        dataset_text_embeddings.append(caption_embedding)
+                        
+                        # calculate mixed embeddings
+                        mixed_embedding = self.image_weight * dataset_embeddings[i] + self.text_weight * caption_embedding
+                        dataset_mixed_embeddings.append(mixed_embedding)
+                    else:
+                        raise ValueError(f"Error embedding text for image '{img}'.")
                 else:
-                    raise ValueError(f"Error embedding text for image '{img}'.")
-                
-                # calculate mixed embeddings
-                mixed_embedding = self.image_weight * embedding + self.text_weight * caption_embedding
-                dataset_mixed_embeddings.append(mixed_embedding)
+                    # If caption generation failed, raise error
+                    raise ValueError(f"Error generating caption for image '{img}'.")
+
 
         print("Finished embedding dataset.")
 

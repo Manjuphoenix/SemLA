@@ -15,12 +15,17 @@ if __name__ == "__main__":
     parser.add_argument("--lora_library_path", type=str, required=True)
     # Flag to enable text embedding generation
     parser.add_argument("--use_text", action="store_true")
+    # Weights for combining image and text embeddings, only when use_text is enabled
+    parser.add_argument("--image_weight", type=float, default=0.5, help="Weight for image embeddings (default: 0.5)")
+    parser.add_argument("--text_weight", type=float, default=0.5, help="Weight for text embeddings (default: 0.5)")
 
     # Parse arguments
     args = parser.parse_args()
     source_domains_file = Path(args.source_domains_file)
     lora_library_path = Path(args.lora_library_path)
     use_text = args.use_text
+    image_weight = args.image_weight
+    text_weight = args.text_weight
 
     with open(source_domains_file, "r") as f:
         source_domains = yaml.safe_load(f)
@@ -29,7 +34,9 @@ if __name__ == "__main__":
 
     print("Generating embeddings for all source domains ...")
     if use_text:
-        print("Generating text embeddings also ...")
+        print(f"Generating text embeddings with weights - Image: {image_weight}, Text: {text_weight}")
+    else:
+        print("Generating image embeddings only")
     
     # how will this change now that we need to generate text embeddings as well?
     for domain_name in source_domains:
@@ -42,7 +49,11 @@ if __name__ == "__main__":
 
         if embedding_manager is None:
             from domain_orchestrator import embedding
-            embedding_manager = embedding.EmbeddingManager(use_text=use_text)
+            embedding_manager = embedding.EmbeddingManager(
+                use_text=use_text, 
+                image_weight=image_weight, 
+                text_weight=text_weight
+            )
 
         domain_path = lora_library_path / Path(domain_name)
 
