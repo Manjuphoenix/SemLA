@@ -18,6 +18,8 @@ if __name__ == "__main__":
     # Weights for combining image and text embeddings, only when use_text is enabled
     parser.add_argument("--image_weight", type=float, default=0.5, help="Weight for image embeddings (default: 0.5)")
     parser.add_argument("--text_weight", type=float, default=0.5, help="Weight for text embeddings (default: 0.5)")
+    # Flag to force regeneration of embeddings even if they already exist
+    parser.add_argument("--force_embedding", action="store_true", help="Force regeneration of embeddings even if they already exist")
 
     # Parse arguments
     args = parser.parse_args()
@@ -26,6 +28,7 @@ if __name__ == "__main__":
     use_text = args.use_text
     image_weight = args.image_weight
     text_weight = args.text_weight
+    force_embedding = args.force_embedding
 
     with open(source_domains_file, "r") as f:
         source_domains = yaml.safe_load(f)
@@ -37,6 +40,9 @@ if __name__ == "__main__":
         print(f"Generating text embeddings with weights - Image: {image_weight}, Text: {text_weight}")
     else:
         print("Generating image embeddings only")
+    
+    if force_embedding:
+        print("Force embedding mode enabled - will regenerate embeddings even if they exist")
     
     # how will this change now that we need to generate text embeddings as well?
     for domain_name in source_domains:
@@ -61,6 +67,9 @@ if __name__ == "__main__":
             domain_name=domain_name,
             domain_path=domain_path,
             train_path=train_dataset_path,
+            image_weight=image_weight,
+            text_weight=text_weight,
+            force_embedding=force_embedding
         )
 
     print("Finished generating embeddings for all domains")

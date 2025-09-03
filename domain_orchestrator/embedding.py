@@ -89,15 +89,19 @@ class ClipEmbeddingModel(EmbeddingModel):
                     raise ValueError(f"Error loading image {image_path}: {e}")
             
             # Prepare batch inputs
-            prompt_formatted = self.llava_processor.apply_chat_template(self.conversation, tokenize=False, add_generation_prompt=True)
-            inputs = self.llava_processor(images=batch_images, text=[prompt_formatted] * len(batch_images), return_tensors="pt").to(self.llava_model.device)
+            prompt_formatted = self.llava_processor.apply_chat_template(self.conversation,
+                                                                        tokenize=False,
+                                                                        add_generation_prompt=True)
+            inputs = self.llava_processor(images=batch_images, 
+                                          text=[prompt_formatted] * len(batch_images), 
+                                          return_tensors="pt").to(self.llava_model.device)
             
             print(f"Processing batch of {len(batch_images)} images")
             
             with torch.no_grad():
                 outputs = self.llava_model.generate(
-                    **inputs, 
-                    max_new_tokens=77,
+                    **inputs,
+                    max_new_tokens=77, # check whether it should be 77 or 76, maybe due to different clip tokenizer from llava one??
                     pad_token_id=self.llava_processor.tokenizer.pad_token_id
                 )
             
@@ -112,9 +116,10 @@ class ClipEmbeddingModel(EmbeddingModel):
                 generated_tokens = output[input_token_length:]
                 generated_text = self.llava_processor.tokenizer.decode(generated_tokens, skip_special_tokens=True)
                 # Remove multiple spaces between words in generated_text, but why's this happening?
-                generated_text = " ".join(generated_text.strip().split())
+                # check if this is causing the error or not for clip text embedding model (77 thing)
+                # generated_text = " ".join(generated_text.strip().split())
                 #print(f"checking if generated text is correct: {generated_text}")
-                batch_captions.append(generated_text)
+                batch_captions.append(generated_text.strip())
             
             
             all_captions.extend(batch_captions)
@@ -256,37 +261,54 @@ class EmbeddingManager:
         print("Finished embedding dataset.")
 
         return dataset_embeddings, dataset_text_embeddings, dataset_mixed_embeddings
-        
-    def calculate_statistics(self, domain_name, domain_path, train_path):
 
+    # change this to handle naming conventions when text embeddings are also enabled
+    def calculate_statistics(self, domain_name, domain_path, train_path, image_weight=None, text_weight=None, force_embedding=False):
         """
         Calculate or load domain statistics.
         Args:
             domain_name (str): The name of the domain.
             domain_path (Path): The path to the domain database where the statistics will be saved.
             train_path (Path): The path to the train set.
+            image_weight (float): Weight for image embeddings (used for file naming).
+            text_weight (float): Weight for text embeddings (used for file naming).
+            force_embedding (bool): If True, regenerate embeddings even if they already exist.
         Returns:
             dict: A dictionary containing the statistics.
         """
-        suffix = "_statistics.npz"
+        # Determine suffix based on whether weights are provided
+        if image_weight is not None and text_weight is not None:
+            print("USING text weihgted embeddings")
+            suffix = f"_{image_weight:.1f}_{text_weight:.1f}_statistics.npz"
+        else:
+            print("USING THE ORIGINAL SEMLA EMBEDDINGS")
+            suffix = "_statistics.npz"
+            
         statistics_path = domain_path / f"{domain_name}{suffix}"
         stats_dict = {}
 
         print(f"Statistics file: {statistics_path}")
-        if statistics_path.exists():  # Load the data if it exists
+        
+        # Skip loading existing file if force_embedding is True
+        if not force_embedding and statistics_path.exists():  # Load the data if it exists
             try:
                 print(f"Loading statistics from {domain_name}{suffix} ...")
                 stats = np.load(statistics_path)
                 stats_dict.update({
                     "train_average_embedding": stats["train_average_embedding"],
                 })
+                
                 print(f"Statistics loaded from {domain_name}{suffix}")
                 return stats_dict
             except Exception as e:
                 print(f"Error loading statistics file '{statistics_path}': {e}")
                 return None
 
-        print(f"Statistics file {statistics_path} does not exist, calculating statistics for domain '{domain_name}' ...")
+        if force_embedding:
+            print(f"Force embedding enabled - regenerating statistics for domain '{domain_name}' ...")
+        else:
+            print(f"Statistics file {statistics_path} does not exist, calculating statistics for domain '{domain_name}' ...")
+            
         train_dataset_embeddings, train_dataset_text_embeddings, train_dataset_mixed_embeddings = self.embed_dataset(train_path)
 
         if not train_dataset_embeddings:
@@ -305,6 +327,7 @@ class EmbeddingManager:
         stats_dict.update({
             "train_average_embedding": train_average_embedding
         })
+
 
         try:
             np.savez(
