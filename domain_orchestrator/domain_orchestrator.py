@@ -6,6 +6,7 @@ from argparse import Namespace
 from dataclasses import dataclass
 import logging
 import os
+from typing import Optional
 
 import numpy as np
 import numpy.typing as npt
@@ -92,11 +93,14 @@ class DomainOrchestrator:
         self,
         domains: list[str],
         lora_db_path: Union[str, Path] = "loradb/",
-        embedding_manager: EmbeddingManager = EmbeddingManager(),
+        embedding_manager: EmbeddingManager = None,
+        image_weight: float = None,
+        text_weight: float = None,
     ) -> None:
         
         # TODO: Currently, to use catseg for experiments, we need to change the directory to the catseg directory
         # This can be fixed by refactoring the catseg repo
+        
         parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         catseg_path = os.path.join(parent_dir, "catseg") # TODO: This is a hardcoded path, it should be a parameter
         
@@ -116,7 +120,20 @@ class DomainOrchestrator:
 
         self.lora_db_path: Path = Path(lora_db_path)
 
-        self.embedding_manager = embedding_manager
+        # Initialize embedding manager with proper settings based on weights
+        if embedding_manager is None:
+            # If weights are provided, enable text embeddings
+            use_text = (image_weight is not None and text_weight is not None)
+            if use_text:
+                self.embedding_manager = EmbeddingManager(use_text=True, image_weight=image_weight, text_weight=text_weight)
+            else:
+                self.embedding_manager = EmbeddingManager(use_text=False)
+        else:
+            self.embedding_manager = embedding_manager
+        
+        # Store weight parameters for statistics file naming
+        self.image_weight = image_weight
+        self.text_weight = text_weight
 
         self.current_model = None
 
@@ -229,7 +246,9 @@ class DomainOrchestrator:
             lora_path = self.lora_db_path / domain_name
 
         statistics: Dict[str, npt.NDArray] = self.embedding_manager.calculate_statistics(
-            domain_name, lora_path, train_dataset_path,
+            domain_name, lora_path, train_dataset_path, 
+            image_weight=self.image_weight, 
+            text_weight=self.text_weight
         )
 
         train_average_embedding: npt.NDArray = statistics[
@@ -308,7 +327,7 @@ class DomainOrchestrator:
         remove_target_adapter: bool,
         mode: Literal["uniform", "centroid"],
         target_embedding=None,
-        softmax_temperature: int | None = 0.05,
+        softmax_temperature: Optional[int] = 0.05,
         top_k: int = 5,  # number of domains to merge
         combination_type: str = "cat",
         similarity_measure: Callable[
@@ -446,12 +465,14 @@ class DomainOrchestrator:
                 config_file=current_target_domain.args.config_file,
                 output_path="output/benchmark_zeroshot/",
                 num_gpus=1,
-                model_path="models/model_final.pth",
+                model_path="models/model_base.pth",
             )
 
             self.current_model = load_catseg_model(
                 args, model_path=args.model_path
             )
+            pytorch_total_params = sum(p.numel() for p in self.current_model.parameters())
+            print(f"Current model parameters: {pytorch_total_params}")
 
             result_dict = self._benchmark_on_current_target_domain(name="zeroshot", target_domain=current_target_domain)
 
@@ -518,7 +539,7 @@ class DomainOrchestrator:
         self,
         target_domains: list[str],
         remove_target_adapter: bool = False,
-        softmax_temperature: int | None = 0.05,
+        softmax_temperature: Optional[int] = 0.05,
         top_k: int = 5,  # number of domains to merge
         combination_type: str = "cat",
         similarity_measure: Callable[
@@ -534,6 +555,8 @@ class DomainOrchestrator:
         weights = {}
 
         t0 = time.time()
+        print(f"Starting SEMLa on domains {target_domains}")
+        # print(f"Target domains: {self._target_domains}")
 
         for current_target_domain_name in target_domains:
             

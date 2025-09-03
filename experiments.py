@@ -44,7 +44,7 @@ def save_results(results: Dict, weights: Optional[Dict] = None, output_dir: str 
     print(f"Results saved to {output_dir}")
 
 def benchmark_zeroshot(source_domains: List[str], target_domains: List[str], 
-                      output_dir: str) -> None:
+                      output_dir: str, image_weight: float = None, text_weight: float = None) -> None:
     """Run zero-shot benchmark experiment."""
     orchestrator = DomainOrchestrator(source_domains)
     results = orchestrator.benchmark_zeroshot(target_domains)
@@ -58,7 +58,8 @@ def benchmark_oracle(source_domains: List[str], target_domains: List[str],
     save_results(results, output_dir=output_dir)
 
 def uniform_merge(source_domains: List[str], target_domains: List[str], 
-                 remove_target_adapter: bool, output_dir: str) -> None:
+                 remove_target_adapter: bool, output_dir: str, 
+                 image_weight: float = None, text_weight: float = None) -> None:
     """Run uniform merge experiment."""
     orchestrator = DomainOrchestrator(domains=source_domains)
     results, weights = orchestrator.benchmark_uniform(
@@ -69,14 +70,14 @@ def uniform_merge(source_domains: List[str], target_domains: List[str],
 
 def semla_merge(source_domains: List[str], target_domains: List[str], 
                 config: Dict[str, Any], remove_target_adapter: bool, 
-                output_dir: str) -> None:
+                output_dir: str, image_weight: float = None, text_weight: float = None) -> None:
     """Run online merge experiment."""
     similarity_measure_name = config.get("similarity_measure_name", "euclidean")
     temperature = config.get("temperature", 0.05)
     top_k = config.get("top_k", 5)
     combination_type = config.get("combination_type", "cat")
     
-    orchestrator = DomainOrchestrator(source_domains)
+    orchestrator = DomainOrchestrator(source_domains, image_weight=image_weight, text_weight=text_weight)
     results, weights = orchestrator.benchmark_semla(
         target_domains=target_domains,
         remove_target_adapter=remove_target_adapter,
@@ -108,6 +109,12 @@ def parse_args():
     parser.add_argument("--remove_target_adapter", action="store_true", 
                         help="Whether to remove target adapter")
     
+    # Weight parameters for statistics file selection
+    parser.add_argument("--image_weight", type=float, default=None,
+                        help="Image weight used for statistics file naming (e.g., 0.7)")
+    parser.add_argument("--text_weight", type=float, default=None,
+                        help="Text weight used for statistics file naming (e.g., 0.3)")
+    
     return parser.parse_args()
 
 def main():
@@ -124,6 +131,12 @@ def main():
     # Load config if provided
     semla_config = load_config_from_yaml(args.semla_config) if args.semla_config else {}
     
+    # Print weight information if provided
+    if args.image_weight is not None and args.text_weight is not None:
+        print(f"Using embedding files with weights - Image: {args.image_weight}, Text: {args.text_weight}")
+    else:
+        print("Using default embedding files (no weights specified)")
+    
     # Run the specified experiment
     if args.experiment == "zeroshot":
         benchmark_zeroshot(source_domains, target_domains, args.output_dir)
@@ -132,7 +145,7 @@ def main():
     elif args.experiment == "uniform":
         uniform_merge(source_domains, target_domains, args.remove_target_adapter, args.output_dir)
     elif args.experiment == "semla":
-        semla_merge(source_domains, target_domains, semla_config, args.remove_target_adapter, args.output_dir)
+        semla_merge(source_domains, target_domains, semla_config, args.remove_target_adapter, args.output_dir, args.image_weight, args.text_weight)
 
 if __name__ == "__main__":
     main()
