@@ -587,7 +587,8 @@ class DomainOrchestrator:
 
                     print(f"Predicting image: {input_path}")
 
-                    current_embedding = self.embedding_manager.embed_image(input_path)
+                    # Get weighted embedding (image + text if use_text is enabled)
+                    current_embedding = self.embedding_manager.get_weighted_embedding_for_image(input_path)
 
                     weight_dict, merged_adpater_name = self._merge(
                         target_domain=current_target_domain,
