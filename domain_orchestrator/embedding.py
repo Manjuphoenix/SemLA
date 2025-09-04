@@ -40,7 +40,7 @@ class ClipEmbeddingModel(EmbeddingModel):
             self.llava_processor = LlavaProcessor.from_pretrained(
                 "llava-hf/llava-1.5-7b-hf"
             )
-            self.prompt = "Describe this image in detail. In your description, specifically mention ALL VISIBLE parts of each object in the image."
+            self.prompt = "Describe this image in detail. In your description, specifically mention ALL VISIBLE parts of each object in the image. Please, don't generate any blank spaces or new lines in your description."
             self.conversation = [{"role": "user", "content": [{"type": "image"}, {"type": "text", "text": self.prompt}]}]
 
     def embed_image(self, image_path) -> npt.NDArray:
@@ -92,8 +92,8 @@ class ClipEmbeddingModel(EmbeddingModel):
             prompt_formatted = self.llava_processor.apply_chat_template(self.conversation,
                                                                         tokenize=False,
                                                                         add_generation_prompt=True)
-            inputs = self.llava_processor(images=batch_images, 
-                                          text=[prompt_formatted] * len(batch_images), 
+            inputs = self.llava_processor(images=batch_images,
+                                          text=[prompt_formatted] * len(batch_images),
                                           return_tensors="pt").to(self.llava_model.device)
             
             print(f"Processing batch of {len(batch_images)} images")
@@ -101,14 +101,14 @@ class ClipEmbeddingModel(EmbeddingModel):
             with torch.no_grad():
                 outputs = self.llava_model.generate(
                     **inputs,
-                    max_new_tokens=77, # check whether it should be 77 or 76, maybe due to different clip tokenizer from llava one??
+                    max_new_tokens=100, # check whether it should be 77 or 76, maybe due to different clip tokenizer from llava one??
                     pad_token_id=self.llava_processor.tokenizer.pad_token_id
                 )
             
             # Decode captions for valid images
             # check if this input token length logic is correct or not
-            print(f"type and shape of inputs is : {type(inputs)}, {inputs['input_ids'].shape}")
-            print(f"type and shape of outputs is : {type(outputs)}, {outputs.shape}")
+            #print(f"type and shape of inputs is : {type(inputs)}, {inputs['input_ids'].shape}")
+            #print(f"type and shape of outputs is : {type(outputs)}, {outputs.shape}")
             input_token_length = inputs["input_ids"].shape[1]
             batch_captions = []
             
@@ -116,8 +116,10 @@ class ClipEmbeddingModel(EmbeddingModel):
                 generated_tokens = output[input_token_length:]
                 generated_text = self.llava_processor.tokenizer.decode(generated_tokens, skip_special_tokens=True)
                 # Remove multiple spaces between words in generated_text, but why's this happening?
-                # check if this is causing the error or not for clip text embedding model (77 thing)
-                # generated_text = " ".join(generated_text.strip().split())
+                generated_text = " ".join(generated_text.strip().split())
+                if '.' in generated_text:
+                    last_period = generated_text.rfind('.')
+                    generated_text = generated_text[:last_period+1]
                 #print(f"checking if generated text is correct: {generated_text}")
                 batch_captions.append(generated_text.strip())
             
@@ -141,7 +143,7 @@ class ClipEmbeddingModel(EmbeddingModel):
         
         prompt_formatted = self.llava_processor.apply_chat_template(self.conversation, tokenize=False, add_generation_prompt=True)
         inputs = self.llava_processor(images=image, text=prompt_formatted, return_tensors="pt").to("cuda")
-        print(f"type and shape of inputs is : {type(inputs)}")
+        # print(f"type and shape of inputs is : {type(inputs)}")
 
         with torch.no_grad():
             # 77 is the max number of tokens that clip text encoder can handle
@@ -158,13 +160,16 @@ class ClipEmbeddingModel(EmbeddingModel):
         generated_tokens = outputs[0][input_token_length:]
         generated_text = self.llava_processor.tokenizer.decode(generated_tokens, skip_special_tokens=True)
         #generated_text = generated_text.replace(self.prompt, "").strip()
-        print(f"Generated caption for image {image_path}: {generated_text}")
+        print(f"Generated caption for image {image_path}: {generated_text.strip()}")
 
         return generated_text
 
     def embed_text(self, text) -> npt.NDArray:
         """Embed a single text."""
-        inputs = self.embedding_processor(text=text, return_tensors="pt").to("cuda")
+        inputs = self.embedding_processor(text=text, return_tensors="pt", truncation=True).to("cuda")
+        input_token_count = inputs["input_ids"].shape[1]
+        print(f"Text to be fed into the clip text encoder: {text}")
+        print(f"Input token count for the caption to be fed into the clip text encoder: {input_token_count}")
         
         with torch.no_grad():
             text_embeddings = (
@@ -203,7 +208,7 @@ class EmbeddingManager:
         """Generate caption for an image and embed the caption."""
         import time
         start_time = time.time()
-        caption = self.embedding_model.generate_caption(image_path)
+        caption = self.embedding_model.generate_captions_batch([image_path], batch_size=1)[0]
         print(f"Time taken to generate caption: {time.time() - start_time} seconds")
 
         return self.embedding_model.embed_text(caption)
@@ -230,7 +235,7 @@ class EmbeddingManager:
         # First, generate all image embeddings
         for img in tqdm(image_files, desc="Generating image embeddings"):
             embedding = self.embed_image(img)
-            print(f"Shape and type of image embedding is: {embedding.shape}, {type(embedding)}")
+            # print(f"Shape and type of image embedding is: {embedding.shape}, {type(embedding)}")
             if embedding is not None:
                 dataset_embeddings.append(embedding)
             else:
@@ -244,7 +249,7 @@ class EmbeddingManager:
             for i, (img, caption) in enumerate(tqdm(zip(image_files, captions), desc="Generating text embeddings", total=len(image_files))):
                 if caption:  # Only process if caption was generated successfully
                     caption_embedding = self.embedding_model.embed_text(caption)
-                    print(f"Shape and type of text embedding is : {caption_embedding.shape}, {type(caption_embedding)}")
+                    #print(f"Shape and type of text embedding is : {caption_embedding.shape}, {type(caption_embedding)}")
                     if caption_embedding is not None:
                         dataset_text_embeddings.append(caption_embedding)
                         
@@ -339,3 +344,21 @@ class EmbeddingManager:
             print(f"Error saving statistics file '{statistics_path}': {e}")
             raise
         return stats_dict
+
+    def get_weighted_embedding_for_image(self, image_path) -> npt.NDArray:
+        """Get weighted embedding for a single image (image + text if use_text is enabled)."""
+        # Get image embedding
+        image_embedding = self.embed_image(image_path)
+        
+        if self.use_text:
+            # Generate caption and get text embedding
+            text_embedding = self.embed_text_for_image(image_path)
+            
+            # Calculate weighted sum
+            weighted_embedding = self.image_weight * image_embedding + self.text_weight * text_embedding
+            # print(f"Weighted embedding for image {image_path}: {weighted_embedding}")
+
+            return weighted_embedding
+        else:
+            # Return only image embedding if text is not enabled
+            return image_embedding
