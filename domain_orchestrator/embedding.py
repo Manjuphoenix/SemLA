@@ -196,7 +196,9 @@ class EmbeddingManager:
         self.text_weight = text_weight / total_weight
         
         if self.use_text:
-            print(f"Using embedding weights - Image: {self.image_weight:.2f}, Text: {self.text_weight:.2f}")
+            # this is misleading when using "combination_weights"
+            # print(f"Using embedding weights - Image: {self.image_weight:.2f}, Text: {self.text_weight:.2f}")
+            pass
         else:
             print("Using image embeddings only")
     
@@ -344,6 +346,83 @@ class EmbeddingManager:
             print(f"Error saving statistics file '{statistics_path}': {e}")
             raise
         return stats_dict
+
+    def calculate_statistics_multiple_weights(self, domain_name, domain_path, train_path, weight_combinations, force_embedding=False):
+        """
+        Calculate domain statistics for multiple weight combinations efficiently.
+        Args:
+            domain_name (str): The name of the domain.
+            domain_path (Path): The path to the domain database where the statistics will be saved.
+            train_path (Path): The path to the train set.
+            weight_combinations (list): List of (image_weight, text_weight) tuples.
+            force_embedding (bool): If True, regenerate embeddings even if they already exist.
+        """
+        print(f"Processing {len(weight_combinations)} weight combinations for domain '{domain_name}'")
+        
+        # Check if any statistics files exist and force_embedding is False
+        existing_files = []
+        if not force_embedding:
+            for img_w, txt_w in weight_combinations:
+                suffix = f"_{img_w:.1f}_{txt_w:.1f}_statistics.npz"
+                statistics_path = domain_path / f"{domain_name}{suffix}"
+                if statistics_path.exists():
+                    existing_files.append((img_w, txt_w))
+        
+        if existing_files and not force_embedding:
+            print(f"Found existing files for {len(existing_files)} weight combinations, skipping...")
+            for img_w, txt_w in existing_files:
+                print(f"  - Image: {img_w}, Text: {txt_w}")
+        
+        # Get weight combinations that need to be processed
+        combinations_to_process = [combo for combo in weight_combinations if combo not in existing_files] if not force_embedding else weight_combinations
+        
+        if not combinations_to_process:
+            print("All weight combinations already exist, skipping processing.")
+            return
+        
+        print(f"Processing {len(combinations_to_process)} weight combinations...")
+        
+        # Calculate embeddings once (image and text if use_text is enabled)
+        print("Calculating base embeddings (image and text)...")
+        train_dataset_embeddings, train_dataset_text_embeddings, _ = self.embed_dataset(train_path)
+        
+        if not train_dataset_embeddings:
+            raise ValueError("No embeddings were generated for dataset.")
+        
+        # Process each weight combination
+        for img_w, txt_w in combinations_to_process:
+            print(f"Processing weights - Image: {img_w}, Text: {txt_w}")
+            
+            # Normalize weights
+            total_weight = img_w + txt_w
+            normalized_img_w = img_w / total_weight
+            normalized_txt_w = txt_w / total_weight
+            
+            # Calculate weighted embeddings
+            if self.use_text:
+                train_dataset_mixed_embeddings = []
+                for i in range(len(train_dataset_embeddings)):
+                    mixed_embedding = normalized_img_w * train_dataset_embeddings[i] + normalized_txt_w * train_dataset_text_embeddings[i]
+                    train_dataset_mixed_embeddings.append(mixed_embedding)
+                train_average_embedding = np.mean(train_dataset_mixed_embeddings, axis=0)
+            else:
+                train_average_embedding = np.mean(train_dataset_embeddings, axis=0)
+            
+            # Save statistics
+            suffix = f"_{img_w:.1f}_{txt_w:.1f}_statistics.npz"
+            statistics_path = domain_path / f"{domain_name}{suffix}"
+            
+            try:
+                np.savez(
+                    statistics_path,
+                    train_average_embedding=train_average_embedding,
+                )
+                print(f"Statistics saved to {domain_name}{suffix}")
+            except Exception as e:
+                print(f"Error saving statistics file '{statistics_path}': {e}")
+                raise
+        
+        print(f"Completed processing {len(combinations_to_process)} weight combinations for domain '{domain_name}'")
 
     def get_weighted_embedding_for_image(self, image_path) -> npt.NDArray:
         """Get weighted embedding for a single image (image + text if use_text is enabled)."""
