@@ -23,4 +23,11 @@ from . import (
     register_nyudv2,
     register_coco_stuff,
     register_coco_panoptic_annos_semseg,
+    register_msrs_ir,
+    register_msrs_rgb,
+    register_indraeye_ir,
+    register_mvseg_ir,
+    register_indraeye_rgb,
+    register_cart_rgb,
+    register_cart_ir,
 )

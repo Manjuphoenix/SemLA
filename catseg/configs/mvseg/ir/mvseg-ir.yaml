@@ -1,0 +1,12 @@
+_BASE_: ../../base.yaml
+MODEL:
+  SEM_SEG_HEAD:
+    NUM_CLASSES: 26
+    TRAIN_CLASS_JSON: "datasets/mvseg.json"
+    TEST_CLASS_JSON: "datasets/mvseg.json"
+DATASETS:
+  TRAIN: ("mv_seg_ir_sem_seg_train",)
+  TEST: ("mv_seg_ir_sem_seg_val",)
+SOLVER:
+  MAX_ITER: 100
+  CHECKPOINT_PERIOD: 5000

@@ -1,0 +1,12 @@
+_BASE_: ../../base.yaml
+MODEL:
+  SEM_SEG_HEAD:
+    NUM_CLASSES: 12
+    TRAIN_CLASS_JSON: "datasets/cart_sem_seg.json" # just contains classes
+    TEST_CLASS_JSON: "datasets/cart_sem_seg.json"
+DATASETS:
+  TRAIN: ("cart_rgb_sem_seg_train",)
+  TEST: ("cart_rgb_sem_seg_val",)
+SOLVER:
+  MAX_ITER: 2000
+  CHECKPOINT_PERIOD: 5000
