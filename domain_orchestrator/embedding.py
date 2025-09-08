@@ -441,3 +441,38 @@ class EmbeddingManager:
         else:
             # Return only image embedding if text is not enabled
             return image_embedding
+
+    def get_weighted_embeddings_batch(self, image_paths, batch_size=64) -> list:
+        """Get weighted embeddings for multiple images in batches."""
+        all_weighted_embeddings = []
+        
+        # Process images in batches
+        from tqdm import tqdm
+        for i in tqdm(range(0, len(image_paths), batch_size), desc="Generating weighted embeddings in batches"):
+            batch_paths = image_paths[i:i + batch_size]
+            
+            # Get image embeddings using the same method as single-image processing
+            batch_image_embeddings = []
+            for image_path in batch_paths:
+                image_embedding = self.embed_image(image_path)
+                batch_image_embeddings.append(image_embedding)
+            
+            if self.use_text:
+                # Generate captions for the batch
+                batch_captions = self.embedding_model.generate_captions_batch(batch_paths, batch_size=len(batch_paths))
+                
+                # Get text embeddings using the same method as single-image processing
+                batch_text_embeddings = []
+                for caption in batch_captions:
+                    text_embedding = self.embedding_model.embed_text(caption)
+                    batch_text_embeddings.append(text_embedding)
+                
+                # Calculate weighted embeddings for the batch
+                for img_emb, txt_emb in zip(batch_image_embeddings, batch_text_embeddings):
+                    weighted_embedding = self.image_weight * img_emb + self.text_weight * txt_emb
+                    all_weighted_embeddings.append(weighted_embedding)
+            else:
+                # Return only image embeddings if text is not enabled
+                all_weighted_embeddings.extend(batch_image_embeddings)
+        
+        return all_weighted_embeddings

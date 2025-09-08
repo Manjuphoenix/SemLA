@@ -581,14 +581,30 @@ class DomainOrchestrator:
                     stack.enter_context(inference_context(model))
                 stack.enter_context(torch.no_grad())
 
+                # First pass: collect all image paths for batch embedding processing
+                all_input_paths = []
                 for _, inputs in enumerate(data_loader):
-
                     input_path = inputs[0]["file_name"]
-
+                    all_input_paths.append(input_path)
+                
+                print(f"Processing {len(all_input_paths)} images in batches...")
+                
+                # Process embeddings in batches
+                batch_size = 128
+                all_embeddings = self.embedding_manager.get_weighted_embeddings_batch(
+                    all_input_paths, batch_size=batch_size
+                )
+                
+                # Create mapping from path to embedding
+                embedding_map = dict(zip(all_input_paths, all_embeddings))
+                
+                data_loader = current_target_domain.data_loader
+                for _, inputs in enumerate(data_loader):
+                    input_path = inputs[0]["file_name"]
                     print(f"Predicting image: {input_path}")
 
-                    # Get weighted embedding (image + text if use_text is enabled)
-                    current_embedding = self.embedding_manager.get_weighted_embedding_for_image(input_path)
+                    # Get pre-computed embedding
+                    current_embedding = embedding_map[input_path]
 
                     weight_dict, merged_adpater_name = self._merge(
                         target_domain=current_target_domain,
