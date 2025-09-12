@@ -5,4 +5,5 @@ catseg/loradb/
 catseg/datasets/
 catseg/output/
 catseg/models/
+catseg/msrs_rgb_40k_ckpt/
 results/
