@@ -782,7 +782,7 @@ class Trainer(DefaultTrainer):
         params: List[Dict[str, Any]] = []
         memo: Set[torch.nn.parameter.Parameter] = set()
         # import ipdb;
-        # ipdb.set_trace()
+        # ipdb.set_trace(context=10)
         for module_name, module in model.named_modules():
             for module_param_name, value in module.named_parameters(recurse=False):
                 if not value.requires_grad:
@@ -947,9 +947,13 @@ def main(args):
         trainer.reset_trainer(cfg, peft_model)
         # Attaching LoRAs changes the modules to which hooks are set, we need to reset
         trainer.model.base_model.model.reset_forward_hooks()
-        trainer.model.print_trainable_parameters()
+
+        # print("__----____--TRAINER MODEL-____--____-", trainer.model, '-__-----_____----')
+        # print(HEY)
+        # trainer.model.print_trainable_parameters()
 
     output = trainer.train()
+    trainer.model.print_trainable_parameters()
 
     # Save only the LoRA weights to LoRA DB
     if cfg.MODEL.LORA.ENABLED == True:

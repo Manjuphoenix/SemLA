@@ -35,6 +35,7 @@ def get_domain_args(
     DATASET_CHECK = {
         "cs",
         "acdc",
+        "acdc_conv",
         "muses",
         "bdd",
         "mv",
@@ -65,7 +66,7 @@ def get_domain_args(
     INDRAEYE = {"day", "night"}
 
     # Configurations assertions
-    assert dataset in DATASET_CHECK
+    # assert dataset in DATASET_CHECK
 
     if dataset == "cs":
         assert (
@@ -100,6 +101,7 @@ def get_domain_args(
             "normal": f"configs/cityscapes/normal/{mode}-{domain}.yaml",
         },
         "acdc": {f"{domain}": f"configs/acdc/{domain}/{mode}-{domain}-acdc.yaml"},
+        "acdc_conv": {f"{domain}": f"configs/acdc/{domain}/{mode}-{domain}-acdc.yaml"},
         "muses": {
             f"{domain}": f"configs/muses/{domain}/muses-{domain}-{sub_domain}.yaml"
         },
@@ -136,6 +138,10 @@ def get_domain_args(
             },
         },
         "acdc": {
+            "train": f"{DETECTRON2_DATASET_PATH}acdc/rgb_anon/{domain}/train/",
+            "val": f"{DETECTRON2_DATASET_PATH}acdc/rgb_anon/{domain}/val/",
+        },
+        "acdc_conv": {
             "train": f"{DETECTRON2_DATASET_PATH}acdc/rgb_anon/{domain}/train/",
             "val": f"{DETECTRON2_DATASET_PATH}acdc/rgb_anon/{domain}/val/",
         },
@@ -225,6 +231,8 @@ def get_domain_args(
     if domain == "" and sub_domain == "":
         config_file = configs[dataset]
     else:
+
+        # print("-___--______", dataset, domain, "_--___-----___-")
         config_file = configs[dataset][domain]
         # config_file = configs[dataset]
 

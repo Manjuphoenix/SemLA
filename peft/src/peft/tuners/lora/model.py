@@ -171,6 +171,8 @@ class LoraModel(BaseTuner):
         if peft_config.layer_replication:
             replicate_layers(model, peft_config.layer_replication)
 
+
+#############################################
     def _create_and_replace(
         self,
         lora_config,
@@ -182,10 +184,18 @@ class LoraModel(BaseTuner):
         *,
         parameter_name: Optional[str] = None,
     ) -> None:
+        
+
+        # print("=--------------=", current_key, "************")  # Individual keys that are taken from the config file
+        # print(OIHEGOIHE)
+
         if current_key is None:
             raise ValueError("Current Key shouldn't be `None`")
+        
+        # print("____----____---___--___=", lora_config.target_parameters)  # Always None....
 
         if lora_config.target_parameters:
+            # Never goes into this.....
             # Right now, unfortunately, we don't support multiple adapters with target_parameters on the same model.
             other_configs_use_target_params = any(
                 conf.target_parameters for key, conf in self.peft_config.items() if key != adapter_name
@@ -200,8 +210,19 @@ class LoraModel(BaseTuner):
         # Regexp matching - Find key which matches current target_name in patterns provided
         r_key = get_pattern_key(lora_config.rank_pattern.keys(), current_key)
         alpha_key = get_pattern_key(lora_config.alpha_pattern.keys(), current_key)
-        r = lora_config.rank_pattern.get(r_key, lora_config.r)
-        alpha = lora_config.alpha_pattern.get(alpha_key, lora_config.lora_alpha)
+        # print("_-------____--_____--=", r_key, "**************8*")
+        # print("_-------____--_____--=", alpha_key, "_-wgwhwhw___--*")
+
+        ################ both r_key and alpha_key are the same here..............###################
+        r = lora_config.rank_pattern.get(r_key, lora_config.r)  #always 8  (Rank as specified in config)
+
+        # print("-----____----___--____", lora_config.rank_pattern, "***************")      # THis is empty
+        # print("-----____----___--____", lora_config.r, "***************")      # THis returns 8
+        # print("-----____----___--____", lora_config.rank_pattern.get(r_key, 684684), "***************")      # THis returns 684684
+        # print("-----____----___--____", lora_config, "***************")      # THis returns 684684
+        alpha = lora_config.alpha_pattern.get(alpha_key, lora_config.lora_alpha)  # Lora alpha is set to 16 so it will return the same
+
+        # print("__----____--____---_____-", alpha, "))((*((***))))")
 
         kwargs = {
             "r": r,
@@ -230,14 +251,20 @@ class LoraModel(BaseTuner):
         quant_methods = ["gptq", "aqlm", "awq"]
         for quant_method in quant_methods:
             quantization_config = get_quantization_config(self.model, method=quant_method)
+            # print("_----____---___", quantization_config)           # None always
             if quantization_config is not None:
                 kwargs[f"{quant_method}_quantization_config"] = quantization_config
 
         # note: AdaLoraLayer is a subclass of LoraLayer, we need to exclude it
         from peft.tuners.adalora import AdaLoraLayer
 
+        # print("***888****", target, ")))(()((********)))")  # Target will be only Linear layers as mentioned in config
         # if the target is a ParamWrapper, we nest it to allow targeting multiple nn.Parameter on the same module
         wrap_target_param = isinstance(target, ParamWrapper) and (adapter_name in target.lora_A)
+
+        # print("_---____---_____--_", target, LoraLayer)
+        # print(OIHIOE)
+        # print("=----___----___---__=", isinstance(target, LoraLayer) and not isinstance(target, AdaLoraLayer) and not wrap_target_param)  # always false
         if isinstance(target, LoraLayer) and not isinstance(target, AdaLoraLayer) and not wrap_target_param:
             target.update_layer(
                 adapter_name,
@@ -250,6 +277,7 @@ class LoraModel(BaseTuner):
                 lora_bias=lora_config.lora_bias,
             )
         else:
+            # print(ELSEE)
             if isinstance(target, ParamWrapper) and (parameter_name == target.parameter_name):
                 raise ValueError(
                     "Trying to target the same nn.Parameter twice, this should not happen. Please open an issue on the "
@@ -257,11 +285,16 @@ class LoraModel(BaseTuner):
                 )
             device_map = self.model.hf_device_map if hasattr(self.model, "hf_device_map") else None
             new_module = self._create_new_module(lora_config, adapter_name, target, device_map=device_map, **kwargs)
+            # print(new_module, "___---___---____---____")         # This gives the module that is added with LoRA
+            # print(HEY)
             if adapter_name not in self.active_adapters:
                 # adding an additional adapter: it is not automatically trainable
                 new_module.requires_grad_(False)
             self._replace_module(parent, target_name, new_module, target)
 
+
+
+##############################################
     def _replace_module(self, parent, child_name, new_module, child):
         setattr(parent, child_name, new_module)
         # It's not necessary to set requires_grad here, as that is handled by
@@ -315,6 +348,9 @@ class LoraModel(BaseTuner):
         # because the first match is always used. Therefore, the default layers should be checked last.
         dispatchers = []
 
+        # print("_---_____--_____--_", lora_config._custom_modules)   # This is None
+        # print(CREATENEWMODULE)
+
         if lora_config._custom_modules:
             # Experimental custom LoRA module support. Allows users to pass a custom mapping for unsupported layer
             # types by impelementing their own LoRA layers.
@@ -336,6 +372,12 @@ class LoraModel(BaseTuner):
             dispatchers.append(dynamic_dispatch_func)
 
         # avoid eager bnb import
+
+        # print("+___----___---___--____", dispatchers, "***88888***888***")   # List is empty here
+        # print(IUHERIUHE)
+
+        # print("_____---____---____--____---__", is_bnb_available(), is_bnb_4bit_available())
+        # ## Always false so no quanitazation is applied here....
         if is_bnb_available():
             from .bnb import dispatch_bnb_8bit
 
@@ -361,11 +403,19 @@ class LoraModel(BaseTuner):
         )
 
         new_module = None
+
+
+        # print("_-_____---____---_____", dispatchers)   # List of different functions......
+        # print(UIOJOIEJ)
+
         for dispatcher in dispatchers:
             new_module = dispatcher(target, adapter_name, lora_config=lora_config, **kwargs)
+            # print(new_module, '--____---___----__---_____')  # All the dispatchers are none except the last one i.e. default
+
             if new_module is not None:  # first match wins
                 break
-
+            
+        # print(HOHEOI)
         if new_module is None:
             # no module could be matched
             raise ValueError(
@@ -373,6 +423,26 @@ class LoraModel(BaseTuner):
                 "`torch.nn.Linear`, `torch.nn.Embedding`, `torch.nn.Conv1d`, `torch.nn.Conv2d`, `torch.nn.Conv3d`, "
                 "`transformers.pytorch_utils.Conv1D`, `torch.nn.MultiheadAttention.`."
             )
+
+        # print("---------_____--____--_____", new_module, "**888*****88****")  
+
+        """ This New module returns the following:
+        lora.Linear(
+        (base_layer): Linear(in_features=1024, out_features=1024, bias=False)
+        (lora_dropout): ModuleDict(
+            (acdc-fog): Identity()
+        )
+        (lora_A): ModuleDict(
+            (acdc-fog): Linear(in_features=1024, out_features=8, bias=False)
+        )
+        (lora_B): ModuleDict(
+            (acdc-fog): Linear(in_features=8, out_features=1024, bias=False)
+        )
+        (lora_embedding_A): ParameterDict()
+        (lora_embedding_B): ParameterDict()
+        (lora_magnitude_vector): ModuleDict()
+        )
+        """
 
         return new_module
 
@@ -386,6 +456,8 @@ class LoraModel(BaseTuner):
             return getattr(self.model, name)
 
     def get_peft_config_as_dict(self, inference: bool = False):
+
+        print(get_peft_config_as_dict)
         config_dict = {}
         for key, value in self.peft_config.items():
             config = {k: v.value if isinstance(v, Enum) else v for k, v in asdict(value).items()}
@@ -404,6 +476,8 @@ class LoraModel(BaseTuner):
 
         Call this if you have previously disabled all adapters and want to re-enable them.
         """
+
+        print(enable_adapter_layers)
         self._set_adapter_layers(enabled=True)
 
     def disable_adapter_layers(self) -> None:
@@ -420,6 +494,7 @@ class LoraModel(BaseTuner):
                 )
                 warnings.warn(msg)
         self._set_adapter_layers(enabled=False)
+        print(disable_adapter_layers)
 
     def set_adapter(self, adapter_name: str | list[str]) -> None:
         """Set the active adapter(s).
@@ -436,6 +511,101 @@ class LoraModel(BaseTuner):
         Args:
             adapter_name (`str` or `list[str]`): Name of the adapter(s) to be activated.
         """
+        # This is called second...
+        # print(set_adapter)
+
+        # print(self.model.modules(), "__----___----____---_")    # <generator object Module.modules at 0x752c61aacba0>
+        # print(self.model, "__----___----____---_")    # This has all the lora module appended to the actual model with example below...
+
+        """
+        (attention): ClassTransformerLayer(
+              (pool): AvgPool2d(kernel_size=[1, 1], stride=[1, 1], padding=0)
+              (attention): AttentionLayer(
+                (q): lora.Linear(
+                  (base_layer): Linear(in_features=256, out_features=128, bias=True)
+                  (lora_dropout): ModuleDict(
+                    (acdc-fog): Identity()
+                  )
+                  (lora_A): ModuleDict(
+                    (acdc-fog): Linear(in_features=256, out_features=8, bias=False)
+                  )
+                  (lora_B): ModuleDict(
+                    (acdc-fog): Linear(in_features=8, out_features=128, bias=False)
+                  )
+                  (lora_embedding_A): ParameterDict()
+                  (lora_embedding_B): ParameterDict()
+                  (lora_magnitude_vector): ModuleDict()
+                )
+                (k): lora.Linear(
+                  (base_layer): Linear(in_features=256, out_features=128, bias=True)
+                  (lora_dropout): ModuleDict(
+                    (acdc-fog): Identity()
+                  )
+                  (lora_A): ModuleDict(
+                    (acdc-fog): Linear(in_features=256, out_features=8, bias=False)
+                  )
+                  (lora_B): ModuleDict(
+                    (acdc-fog): Linear(in_features=8, out_features=128, bias=False)
+                  )
+                  (lora_embedding_A): ParameterDict()
+                  (lora_embedding_B): ParameterDict()
+                  (lora_magnitude_vector): ModuleDict()
+                )
+                (v): lora.Linear(
+                  (base_layer): Linear(in_features=128, out_features=128, bias=True)
+                  (lora_dropout): ModuleDict(
+                    (acdc-fog): Identity()
+                  )
+                  (lora_A): ModuleDict(
+                    (acdc-fog): Linear(in_features=128, out_features=8, bias=False)
+                  )
+                  (lora_B): ModuleDict(
+                    (acdc-fog): Linear(in_features=8, out_features=128, bias=False)
+                  )
+                  (lora_embedding_A): ParameterDict()
+                  (lora_embedding_B): ParameterDict()
+                  (lora_magnitude_vector): ModuleDict()
+                )
+                (attention): LinearAttention()
+              )
+              (MLP): Sequential(
+                (0): lora.Linear(
+                  (base_layer): Linear(in_features=128, out_features=512, bias=True)
+                  (lora_dropout): ModuleDict(
+                    (acdc-fog): Identity()
+                  )
+                  (lora_A): ModuleDict(
+                    (acdc-fog): Linear(in_features=128, out_features=8, bias=False)
+                  )
+                  (lora_B): ModuleDict(
+                    (acdc-fog): Linear(in_features=8, out_features=512, bias=False)
+                  )
+                  (lora_embedding_A): ParameterDict()
+                  (lora_embedding_B): ParameterDict()
+                  (lora_magnitude_vector): ModuleDict()
+                )
+                (1): ReLU()
+                (2): lora.Linear(
+                  (base_layer): Linear(in_features=512, out_features=128, bias=True)
+                  (lora_dropout): ModuleDict(
+                    (acdc-fog): Identity()
+                  )
+                  (lora_A): ModuleDict(
+                    (acdc-fog): Linear(in_features=512, out_features=8, bias=False)
+                  )
+                  (lora_B): ModuleDict(
+                    (acdc-fog): Linear(in_features=8, out_features=128, bias=False)
+                  )
+                  (lora_embedding_A): ParameterDict()
+                  (lora_embedding_B): ParameterDict()
+                  (lora_magnitude_vector): ModuleDict()
+                )
+              )
+              (norm1): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+              (norm2): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+            )
+          )"""
+        # print(OHOIHJ)
         self.set_auxiliary_adapters(adapter_name)
         for module in self.model.modules():
             if isinstance(module, LoraLayer):
@@ -447,6 +617,9 @@ class LoraModel(BaseTuner):
 
     @contextmanager
     def _enable_peft_forward_hooks(self, *args, **kwargs):
+
+        # print(enable_peft_forward_hooks)
+        # second...
         # If adapter_names is passed as an argument, we inject it into the forward arguments.
         adapter_names = kwargs.pop("adapter_names", None)
         if adapter_names is None:
@@ -506,6 +679,7 @@ class LoraModel(BaseTuner):
             handle.remove()
 
     def _check_merge_allowed(self):
+        print(check_merge_allowed)
         """Verify that the configuration supports merging.
 
         Currently gptq quantization and replicated layers do not support merging.
@@ -518,6 +692,36 @@ class LoraModel(BaseTuner):
 
     @staticmethod
     def _prepare_adapter_config(peft_config, model_config):
+        #This is called first......
+        # print(prepare_adapter_config)
+
+        # print("-____--____---_____---_____", model_config["model_type"], "*****888***888****")  # This will give custom...
+        # print("-____--____---_____---_____", TRANSFORMERS_MODELS_TO_LORA_TARGET_MODULES_MAPPING, "*****888***888****")
+        """ The above print statement returns the following:  This is more like the standard large language model
+        which has to be further fine-tuned...
+        {'t5': ['q', 'v'], 'mt5': ['q', 'v'], 'bart': ['q_proj', 'v_proj'], 'gpt2': ['c_attn'],
+          'bloom': ['query_key_value'], 'blip-2': ['q', 'v', 'q_proj', 'v_proj'], 'opt': ['q_proj',
+        'v_proj'], 'gptj': ['q_proj', 'v_proj'], 'gpt_neox': ['query_key_value'],
+        'gpt_neo': ['q_proj', 'v_proj'], 'bert': ['query', 'value'], 'roberta': ['query', 'value'],
+        'xlm-roberta': ['query', 'value'], 'electra': ['query', 'value'], 'deberta-v2': ['query_proj',
+        'value_proj'], 'deberta': ['in_proj'], 'layoutlm': ['query', 'value'], 'llama': ['q_proj', 'v_proj'],
+        'llama4': ['q_proj', 'v_proj'], 'chatglm': ['query_key_value'], 'gpt_bigcode': ['c_attn'],
+        'mpt': ['Wqkv'], 'RefinedWebModel': ['query_key_value'], 'RefinedWeb': ['query_key_value'],
+        'falcon': ['query_key_value'], 'btlm': ['c_proj', 'c_attn'], 'codegen': ['qkv_proj'],
+        'mistral': ['q_proj', 'v_proj'], 'mixtral': ['q_proj', 'v_proj'], 'stablelm': ['q_proj',
+        'v_proj'], 'phi': ['q_proj', 'v_proj', 'fc1', 'fc2'], 'gemma': ['q_proj', 'v_proj'],
+        'gemma2': ['q_proj', 'v_proj'], 'gemma3_text': ['q_proj', 'v_proj'], 'qwen2': ['q_proj', 'v_proj'],
+        'qwen3': ['q_proj', 'v_proj']}
+        """
+
+        
+        # print("-____--____---_____---_____", peft_config.target_modules, "*****888***888****")
+        # # This is taken from the config that is provided...
+        # print(OIHOI)
+
+        # print("______---____--_____--____--___", peft_config)  # This will be all the peft configs..
+        # print(OIHWOIH)
+
         if peft_config.target_modules is None:
             if model_config["model_type"] in TRANSFORMERS_MODELS_TO_LORA_TARGET_MODULES_MAPPING:
                 peft_config.target_modules = set(
@@ -650,6 +854,8 @@ class LoraModel(BaseTuner):
         density: float | None = None,
         majority_sign_method: Literal["total", "frequency"] = "total",
     ) -> None:
+        ######## Called when running SEMLA setting of TTA #######################
+        # print(add_weighted_adapter)
         """
         This method adds a new adapter by merging the given adapters with the given weights.
 
@@ -850,6 +1056,8 @@ class LoraModel(BaseTuner):
         density,
         majority_sign_method,
     ):
+        
+        print(generalized_task_arithmetic_weighted_adapter)
         # account weights for LoRA A and B layers.
         valid_weights = []
         lora_A_deltas = []
@@ -886,6 +1094,8 @@ class LoraModel(BaseTuner):
         return lora_deltas
 
     def delete_adapter(self, adapter_name: str) -> None:
+        # print(delete_adapter)
+        ############# Called during SEMLA setting of TTA ##############
         """
         Deletes an existing adapter.
 
@@ -936,6 +1146,7 @@ class LoraModel(BaseTuner):
         >>> merged_model = model.merge_and_unload()
         ```
         """
+        print(merge_and_unload)
         return self._unload_and_optionally_merge(
             progressbar=progressbar, safe_merge=safe_merge, adapter_names=adapter_names
         )
@@ -945,6 +1156,7 @@ class LoraModel(BaseTuner):
         Gets back the base model by removing all the lora modules without merging. This gives back the original base
         model.
         """
+        print(unload)
         return self._unload_and_optionally_merge(merge=False)
 
     def subtract_mutated_init(self, output_state_dict: dict[str, torch.Tensor], adapter_name: str, kwargs=None):
@@ -953,6 +1165,7 @@ class LoraModel(BaseTuner):
         PiSSA/CorDA/OLoRA adapter in `output_state_dict` with the initial values of PiSSA/CorDA/OLoRA in
         `adapter_name`, thus converting PiSSA/CorDA/OLoRA to LoRA.
         """
+        print(subtract_mutated_init)
         for name, param in self.model.named_parameters():
             if (
                 param.data.dtype != torch.float32
