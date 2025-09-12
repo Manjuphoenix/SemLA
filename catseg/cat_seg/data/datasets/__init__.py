@@ -34,5 +34,5 @@ from . import (
     register_msrs_rgb,
     register_msrs_ir,
     register_cart_rgb,
-    register_cart_ir,
+    register_openearth,
 )

@@ -54,6 +54,7 @@ def get_domain_args(
         "msrs_ir",
         "cartr",
         "carti",
+        "openearth"
     }
 
     CS_DOMAIN_CHECK = {"normal", "rain"}
@@ -128,6 +129,7 @@ def get_domain_args(
         "cartr": "configs/cart/rgb/cart-rgb.yaml",
         "carti": "configs/cart/ir/cart-ir.yaml",
         "IE_Segmentation_ir": "configs/indraeye/ir/indraeye-ir.yaml",
+        "openearth": "configs/openearth/openearth-ir.yaml",
     }
 
     datasets = {
@@ -212,6 +214,10 @@ def get_domain_args(
         "carti": {
             "train": f"{DETECTRON2_DATASET_PATH}cart/train/",
             "val": f"{DETECTRON2_DATASET_PATH}cart/val/",
+        },
+        "openearth": {
+            "train": f"{DETECTRON2_DATASET_PATH}OpenEarthMap/train/",
+            "val": f"{DETECTRON2_DATASET_PATH}OpenEarthMap/val/",
         }
     }
 
