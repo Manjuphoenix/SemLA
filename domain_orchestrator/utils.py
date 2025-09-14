@@ -54,7 +54,12 @@ def get_domain_args(
         "msrs_ir",
         "cartr",
         "carti",
-        "openearth"
+        "openearth",
+        "idd_conv",
+        "cs_conv",
+        "mv_conv",
+        "muses_conv",
+        "bdd_conv",
     }
 
     CS_DOMAIN_CHECK = {"normal", "rain"}
@@ -101,16 +106,26 @@ def get_domain_args(
             "rain": f"configs/cityscapes/rain/{sub_domain}/{mode}-{domain}-{sub_domain}.yaml",
             "normal": f"configs/cityscapes/normal/{mode}-{domain}.yaml",
         },
+        "cs_conv": {
+            "rain": f"configs/cityscapes/rain/{sub_domain}/{mode}-{domain}-{sub_domain}.yaml",
+            "normal": f"configs/cityscapes/normal/{mode}-{domain}.yaml",
+        },
         "acdc": {f"{domain}": f"configs/acdc/{domain}/{mode}-{domain}-acdc.yaml"},
         "acdc_conv": {f"{domain}": f"configs/acdc/{domain}/{mode}-{domain}-acdc.yaml"},
         "muses": {
             f"{domain}": f"configs/muses/{domain}/muses-{domain}-{sub_domain}.yaml"
         },
+        "muses_conv": {
+            f"{domain}": f"configs/muses/{domain}/muses-{domain}-{sub_domain}.yaml"
+        },
         "bdd": "configs/bdd/bdd.yaml",
+        "bdd_conv": "configs/bdd/bdd.yaml",
         "mv": "configs/mv/mv.yaml",
+        "mv_conv": "configs/mv/mv.yaml",
         "nyu": "configs/nyu/nyu.yaml",
         "a150": "configs/a150/a150.yaml",
         "idd": "configs/idd/idd.yaml",
+        "idd_conv": "configs/idd/idd.yaml",
         'pc59': 'configs/pc59/pc59.yaml',
         'nyu': 'configs/nyu/nyu.yaml',
         'coconutL': 'configs/coconutL/coconutL.yaml',
@@ -139,6 +154,12 @@ def get_domain_args(
                 "val": f"{DETECTRON2_DATASET_PATH}cityscapes/leftImg8bit/val/",
             },
         },
+        "cs_conv": {
+            "normal": {
+                "train": f"{DETECTRON2_DATASET_PATH}cityscapes/leftImg8bit/train/",
+                "val": f"{DETECTRON2_DATASET_PATH}cityscapes/leftImg8bit/val/",
+            },
+        },
         "acdc": {
             "train": f"{DETECTRON2_DATASET_PATH}acdc/rgb_anon/{domain}/train/",
             "val": f"{DETECTRON2_DATASET_PATH}acdc/rgb_anon/{domain}/val/",
@@ -151,11 +172,23 @@ def get_domain_args(
             "train": f"{DETECTRON2_DATASET_PATH}muses/frame_camera/train/{domain}/{sub_domain}/",
             "val": f"{DETECTRON2_DATASET_PATH}muses/frame_camera/val/{domain}/{sub_domain}/",
         },
+        "muses_conv": {
+            "train": f"{DETECTRON2_DATASET_PATH}muses/frame_camera/train/{domain}/{sub_domain}/",
+            "val": f"{DETECTRON2_DATASET_PATH}muses/frame_camera/val/{domain}/{sub_domain}/",
+        },
         "bdd": {
             "train": f"{DETECTRON2_DATASET_PATH}bdd100k/images/10k/train/",
             "val": f"{DETECTRON2_DATASET_PATH}bdd100k/images/10k/val/",
         },
+        "bdd_conv": {
+            "train": f"{DETECTRON2_DATASET_PATH}bdd100k/images/10k/train/",
+            "val": f"{DETECTRON2_DATASET_PATH}bdd100k/images/10k/val/",
+        },
         "mv": {
+            "train": f"{DETECTRON2_DATASET_PATH}mapillary_vistas/train/images/",
+            "val": f"{DETECTRON2_DATASET_PATH}mapillary_vistas/val/images/",
+        },
+        "mv_conv": {
             "train": f"{DETECTRON2_DATASET_PATH}mapillary_vistas/train/images/",
             "val": f"{DETECTRON2_DATASET_PATH}mapillary_vistas/val/images/",
         },
@@ -218,7 +251,11 @@ def get_domain_args(
         "openearth": {
             "train": f"{DETECTRON2_DATASET_PATH}OpenEarthMap/train/",
             "val": f"{DETECTRON2_DATASET_PATH}OpenEarthMap/val/",
-        }
+        },
+        "idd_conv": {
+            "train": f"{DETECTRON2_DATASET_PATH}IDD_Segmentation/leftImg8bit/train/",
+            "val": f"{DETECTRON2_DATASET_PATH}IDD_Segmentation/leftImg8bit/val/",
+        },
     }
 
     # Output path configuration
@@ -242,17 +279,60 @@ def get_domain_args(
         config_file = configs[dataset][domain]
         # config_file = configs[dataset]
 
-    train_dataset_path = (
-        datasets[dataset]["train"]
-        if dataset != "cs"
-        else datasets[dataset][domain]["train"]
-    )
+    
 
-    val_dataset_path = (
-        datasets[dataset]["val"]
-        if dataset != "cs"
-        else datasets[dataset][domain]["val"]
-    )
+    # if dataset == "cs_conv":
+    #     train_dataset_path = (
+    #         datasets[dataset]["normal"]["train"]
+    #         if dataset != "cs"
+    #         else datasets[dataset][domain]["train"]
+    #     )
+
+    #     val_dataset_path = (
+    #         datasets[dataset]["normal"]["val"]
+    #         if dataset != "cs"
+    #         else datasets[dataset][domain]["val"]
+    #     )
+    # else:
+    #     # import ipdb
+    #     # ipdb.set_trace(context=10)
+    #     train_dataset_path = (
+    #     datasets[dataset]["train"]
+    #     if dataset != "cs"
+    #     else datasets[dataset][domain]["train"]
+    # )
+
+    # val_dataset_path = (
+    #     datasets[dataset]["val"]
+    #     if dataset != "cs"
+    #     else datasets[dataset][domain]["val"]
+    # )
+
+    # args = Namespace(
+    #     config_file=config_file,
+    #     eval_only=True,
+    #     num_gpus=num_gpus,
+    #     train_dataset_path=train_dataset_path,
+    #     val_dataset_path=val_dataset_path,
+    #     opts=[
+    #         "OUTPUT_DIR",
+    #         output_path,
+    #         "TEST.SLIDING_WINDOW",
+    #         "True",
+    #         "MODEL.SEM_SEG_HEAD.POOLING_SIZES",
+    #         "[1,1]",
+    #         "MODEL.WEIGHTS",
+    #         base_model_path,
+    #     ],
+    #     resume=True,
+    # )
+
+    if dataset in ["cs", "cs_conv"]:
+        train_dataset_path = datasets[dataset]["normal"]["train"]
+        val_dataset_path = datasets[dataset]["normal"]["val"]
+    else:
+        train_dataset_path = datasets[dataset]["train"]
+        val_dataset_path = datasets[dataset]["val"]
 
     args = Namespace(
         config_file=config_file,

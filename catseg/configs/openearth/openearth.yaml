@@ -1,4 +1,4 @@
-_BASE_: ../../base.yaml
+_BASE_: ../base.yaml
 MODEL:
   SEM_SEG_HEAD:
     NUM_CLASSES: 9
