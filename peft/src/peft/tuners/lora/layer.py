@@ -95,9 +95,13 @@ class LoraLayer(BaseTunerLayer):
         self.scaling = {}
         self.lora_dropout = nn.ModuleDict({})
         self.lora_A = nn.ModuleDict({})
+        self.lora_A1 = nn.ModuleDict({})
         self.lora_B = nn.ModuleDict({})
+        self.lora_B1 = nn.ModuleDict({})
         # For Embedding layer
+        self.lora_embedding_A1 = nn.ParameterDict({})
         self.lora_embedding_A = nn.ParameterDict({})
+        self.lora_embedding_B1 = nn.ParameterDict({})
         self.lora_embedding_B = nn.ParameterDict({})
         # Mark the weight as unmerged
         self._disable_adapters = False
@@ -234,8 +238,10 @@ class LoraLayer(BaseTunerLayer):
         self.lora_dropout.update(nn.ModuleDict({adapter_name: lora_dropout_layer}))
 ##########################################################################################################################
         # Actual trainable parameters
-        self.lora_A[adapter_name] = nn.Linear(self.in_features, r, bias=False)      # Scale down
-        self.lora_B[adapter_name] = nn.Linear(r, self.out_features, bias=lora_bias)     # Scale up
+        self.lora_A1[adapter_name] = nn.Linear(self.in_features, int(r/2), bias=False)      # Scale down
+        self.lora_A[adapter_name] = nn.Linear(int(r/2), r, bias=False)      # Scale down
+        self.lora_B1[adapter_name] = nn.Linear(r, int(r/2), bias=lora_bias)     # Scale up
+        self.lora_B[adapter_name] = nn.Linear(int(r/2), self.out_features, bias=lora_bias)     # Scale up
         self.lora_bias[adapter_name] = lora_bias
 
         # print("_-____---____---____---", self.lora_A, self.lora_B, self.lora_bias, "OGIHEOIHGOIH")
@@ -314,6 +320,20 @@ class LoraLayer(BaseTunerLayer):
             nn.init.zeros_(self.lora_B[adapter_name].weight)
             if self.lora_bias[adapter_name]:
                 nn.init.zeros_(self.lora_B[adapter_name].bias)
+        
+        # if adapter_name in self.lora_A1.keys():
+        #     if init_lora_weights is True:
+        #         # initialize A the same way as the default for nn.Linear and B to zero
+        #         # https://github.com/microsoft/LoRA/blob/a0a92e0f26c067cf94747bdbf1ce73793fa44d19/loralib/layers.py#L124
+        #         nn.init.kaiming_uniform_(self.lora_A1[adapter_name].weight, a=math.sqrt(5))
+        #     elif init_lora_weights.lower() == "gaussian":
+        #         nn.init.normal_(self.lora_A1[adapter_name].weight, std=1 / self.r[adapter_name])
+        #     else:
+        #         raise ValueError(f"Unknown initialization {init_lora_weights=}")
+        #     nn.init.zeros_(self.lora_B1[adapter_name].weight)
+        #     if self.lora_bias[adapter_name]:
+        #         nn.init.zeros_(self.lora_B1[adapter_name].bias)
+
         if adapter_name in self.lora_embedding_A.keys():
             # Initialize A to zeros and B the same way as the default for nn.Embedding, see:
             # https://github.com/microsoft/LoRA/blob/4c0333854cb905966f8cc4e9a74068c1e507c7b7/loralib/layers.py#L59-L60
@@ -322,6 +342,15 @@ class LoraLayer(BaseTunerLayer):
             if self.lora_bias[adapter_name]:
                 # embeddings are not supported at the moment, but still adding this for consistency
                 nn.init.zeros_(self.lora_embedding_B[adapter_name].bias)
+
+        # if adapter_name in self.lora_embedding_A1.keys():
+        #     # Initialize A to zeros and B the same way as the default for nn.Embedding, see:
+        #     # https://github.com/microsoft/LoRA/blob/4c0333854cb905966f8cc4e9a74068c1e507c7b7/loralib/layers.py#L59-L60
+        #     nn.init.zeros_(self.lora_embedding_A1[adapter_name])
+        #     nn.init.normal_(self.lora_embedding_B1[adapter_name])
+        #     if self.lora_bias[adapter_name]:
+        #         # embeddings are not supported at the moment, but still adding this for consistency
+        #         nn.init.zeros_(self.lora_embedding_B1[adapter_name].bias)
 
     def olora_init(self, adapter_name):
         base_layer = self.get_base_layer()
@@ -653,22 +682,22 @@ class Linear(nn.Module, LoraLayer):
         self.adapt_name = adapter_name
 
         ############### conv layer for LoRA ###########
-        self.conv1 = nn.Conv2d(8, 24, kernel_size=3, stride=2, padding=1, bias=False)
-        self.conv1 = self.conv1.cuda()
+        # self.conv1 = nn.Conv2d(8, 24, kernel_size=3, stride=2, padding=1, bias=False)
+        # self.conv1 = self.conv1.cuda()
 
-        self.conv1.weight.requires_grad_(True)
+        # self.conv1.weight.requires_grad_(True)
 
         # for param in self.conv1.parameters():
         #     param.requires_grad = True
 
 
-        print("=== Conv1 parameters specifically ===")
-        for name, param in self.conv1.named_parameters():
-            print(f"conv1.{name}: {param.shape}, requires_grad: {param.requires_grad}")
+        # print("=== Conv1 parameters specifically ===")
+        # for name, param in self.conv1.named_parameters():
+        #     print(f"conv1.{name}: {param.shape}, requires_grad: {param.requires_grad}")
             
 
         # Initialize conv weights properly
-        nn.init.kaiming_normal_(self.conv1.weight, mode='fan_out', nonlinearity='relu')
+        # nn.init.kaiming_normal_(self.conv1.weight, mode='fan_out', nonlinearity='relu')
         # self.conv2 = nn.Conv2d(3, base_layer, kernel_size=3, stride=2, padding=1, bias=False)
         # self.conv3 = nn.Conv2d(3, base_layer, kernel_size=3, stride=2, padding=1, bias=False)
 
@@ -676,7 +705,7 @@ class Linear(nn.Module, LoraLayer):
         # print("=== All module parameters ===")
         # for name, param in self.named_parameters():
         #     print(f"{name}: {param.shape}, requires_grad: {param.requires_grad}, device: {param.device}")
-        assert self.conv1.weight.requires_grad, "Conv1 weight should require gradients!"
+        # assert self.conv1.weight.requires_grad, "Conv1 weight should require gradients!"
 
         # print("=== Conv1 parameters specifically ===")
         # for name, param in self.conv1.named_parameters():
@@ -916,12 +945,17 @@ class Linear(nn.Module, LoraLayer):
             torch_result_dtype = result.dtype
 
             lora_A_keys = self.lora_A.keys()
+            lora_A1_keys = self.lora_A1.keys()
             for active_adapter in self.active_adapters:
                 if active_adapter not in lora_A_keys:
                     continue
+                if active_adapter not in lora_A1_keys:
+                    continue
 
                 lora_A = self.lora_A[active_adapter]
+                lora_A1 = self.lora_A1[active_adapter]
                 lora_B = self.lora_B[active_adapter]
+                lora_B1 = self.lora_B1[active_adapter]
                 dropout = self.lora_dropout[active_adapter]
                 scaling = self.scaling[active_adapter]
 
@@ -932,155 +966,164 @@ class Linear(nn.Module, LoraLayer):
                 # print(OIHEWIOH)
 
                 if active_adapter not in self.lora_variant:  # vanilla LoRA
-                    if self.adapt_name[:-5] == "_conv":
+                    # if self.adapt_name[:-5] == "_conv":
 
-                        # ############################################## Conv LORA #######################################
-                        # Goes here during the forward pass....
-                        # print("____---___-AAAAAAAA--____--__", lora_A, "*******8888****888***88****88**")
-                        # print("____---___-BBBBBBBB--____--__", lora_B, "*******8888****888***88****88**")
-                        # The above print statement gives the following: 
-                        # which are nothing but LoraA and LoraB layers...
-                        # print(OIEHOI)
+                    # ############################################## Conv LORA #######################################
+                    # Goes here during the forward pass....
+                    # print("____---___-AAAAAAAA--____--__", lora_A, "*******8888****888***88****88**")
+                    # print("____---___-BBBBBBBB--____--__", lora_B, "*******8888****888***88****88**")
+                    # The above print statement gives the following: 
+                    # which are nothing but LoraA and LoraB layers...
+                    # print(OIEHOI)
 
-                        # print("_--____----___---____input shape for lora", x.shape)     #torch.Size([577, 2, 1024])
-                        # if x.shape[0] ==577:
-                        #     print("IMG ENCODER...........") # shape will be [577, 2, 1024]
-                        # else:
-                        #     print("TEXT ENCODER...........") # shape will be [77, 19, 3072]
-                        # print(HIEUY)
-                        ######## ORiginal process
-                        # result = result + lora_B(lora_A(dropout(x))) * scaling
+                    # print("_--____----___---____input shape for lora", x.shape)     #torch.Size([577, 2, 1024])
+                    # if x.shape[0] ==577:
+                    #     print("IMG ENCODER...........") # shape will be [577, 2, 1024]
+                    # else:
+                    #     print("TEXT ENCODER...........") # shape will be [77, 19, 3072]
+                    # print(HIEUY)
+                    ######## ORiginal process
+                    # result = result + lora_B(lora_A(dropout(x))) * scaling
 
-                        ######### Broken process for modifications...... 
-                        la = lora_A(dropout(x))         # la : L, B, D
-                        # print(la.shape, "before first permute")     #torch.Size([577, 2, 8])
-                        L_orig, B_orig, C_orig = la.shape
-                        # Convert to batch first...
-                        la = la.permute(1, 0, 2)  # [2, 577, 8]
-                        # print(la.shape, "after first permute")      #torch.Size([2, 577, 8])
-                        # Adaptive pooling preparation...
-                        la = la.permute(0,2,1)   #  [2, 8, 576]
-                        # print(la.shape, "after second permute")     #torch.Size([2, 8, 577])
+                    ######### Broken process for modifications...... 
+                    # la1 = lora_A1(dropout(x))         # la : L, B, D
+                    # la = lora_A(la1)         # la : L, B, D
+                    # # print(la.shape, "before first permute")     #torch.Size([577, 2, 8])
+                    # L_orig, B_orig, C_orig = la.shape
+                    # # Convert to batch first...
+                    # la = la.permute(1, 0, 2)  # [2, 577, 8]
+                    # # print(la.shape, "after first permute")      #torch.Size([2, 577, 8])
+                    # # Adaptive pooling preparation...
+                    # la = la.permute(0,2,1)   #  [2, 8, 576]
+                    # # print(la.shape, "after second permute")     #torch.Size([2, 8, 577])
 
-                        ######### L: sequence length, B: Batch size, C: Feature dimension
-                        B, C, L = la.shape # (should give B=2, C=8, L=577)
-                        # B, L, C = la.shape      # B =2, L=577, C=8
-                        target_size = int(math.sqrt(L))
-                        target_spatial_size = target_size * target_size     #  576 (24 *24)
-                        pooled = F.adaptive_avg_pool1d(
-                            la,  # [2, 8, 577]
-                            target_spatial_size  # Pool to 576
-                        ).permute(0, 2, 1)  # [2, 576, 8]
+                    # ######### L: sequence length, B: Batch size, C: Feature dimension
+                    # B, C, L = la.shape # (should give B=2, C=8, L=577)
+                    # # B, L, C = la.shape      # B =2, L=577, C=8
+                    # target_size = int(math.sqrt(L))
+                    # target_spatial_size = target_size * target_size     #  576 (24 *24)
+                    # pooled = F.adaptive_avg_pool1d(
+                    #     la,  # [2, 8, 577]
+                    #     target_spatial_size  # Pool to 576
+                    # ).permute(0, 2, 1)  # [2, 576, 8]
 
-                        print("Pooled shape:", pooled.shape)
-                        B_new, spatial_tokens, C_new = pooled.shape  # B_new=2, spatial_tokens=576, C_new=8
+                    # print("Pooled shape:", pooled.shape)
+                    # B_new, spatial_tokens, C_new = pooled.shape  # B_new=2, spatial_tokens=576, C_new=8
 
-                        spatial_4d = pooled.reshape(B_new, target_size, target_size, C_new).permute(0, 3, 1, 2)
+                    # spatial_4d = pooled.reshape(B_new, target_size, target_size, C_new).permute(0, 3, 1, 2)
 
-                        # print("*8******888****888***", spatial_4d.shape, "_----____----___--__")
-                        # print(HEY)
-                        # print("Spatial 4D shape:", spatial_4d.shape)  # Should be [2, 8, 24, 24]
-                        # print(HEIYIO)
-                        # print(f"Conv1 training mode: {self.conv1.training}")
-                        # import ipdb;
-                        # ipdb.set_trace(context=10)
+                    # # print("*8******888****888***", spatial_4d.shape, "_----____----___--__")
+                    # # print(HEY)
+                    # # print("Spatial 4D shape:", spatial_4d.shape)  # Should be [2, 8, 24, 24]
+                    # # print(HEIYIO)
+                    # # print(f"Conv1 training mode: {self.conv1.training}")
+                    # # import ipdb;
+                    # # ipdb.set_trace(context=10)
 
-                        # c1_op = self.conv1(spatial_4d)
-                        c1_op = self.conv1(spatial_4d.to(self.conv1.weight.device))
+                    # # c1_op = self.conv1(spatial_4d)
+                    # c1_op = self.conv1(spatial_4d.to(self.conv1.weight.device))
 
-                        print("---___---___---____First conv layer output shape", c1_op.shape)
-                        ################ Reverse the operation ###########
-                        # conv1_trainable_after = sum(p.numel() for p in self.conv1.parameters() if p.requires_grad)
-                        # print(f"AFTER forward - Conv1 trainable params: {conv1_trainable_after:,}")
+                    # print("---___---___---____First conv layer output shape", c1_op.shape)
+                    # ################ Reverse the operation ###########
+                    # # conv1_trainable_after = sum(p.numel() for p in self.conv1.parameters() if p.requires_grad)
+                    # # print(f"AFTER forward - Conv1 trainable params: {conv1_trainable_after:,}")
 
-                        # if conv1_trainable_after > conv1_trainable_before:
-                        #     print("✅ Conv1 became trainable after forward pass!")
-                        conv_flat = c1_op.permute(0, 2, 3, 1).reshape(B_new, -1, C_new)
+                    # # if conv1_trainable_after > conv1_trainable_before:
+                    # #     print("✅ Conv1 became trainable after forward pass!")
+                    # conv_flat = c1_op.permute(0, 2, 3, 1).reshape(B_new, -1, C_new)
 
-                        if conv_flat.shape[1] != L_orig:  # 576 != 577
-                            conv_upsampled = F.interpolate(
-                                conv_flat.permute(0, 2, 1),  # [2, 8, 576]
-                                size=L_orig,  # Interpolate back to 577
-                                mode='linear',
-                                align_corners=False
-                            ).permute(0, 2, 1)  # [2, 577, 8]
-                        else:
-                            conv_upsampled = conv_flat
-                        
-                        # Step 3: Convert back to channel-first then to original format
-                        # Current: [2, 577, 8] (batch, seq, channels)
-                        conv_result = conv_upsampled.permute(0, 2, 1)  # [2, 8, 577]
-                        conv_result = conv_result.permute(1, 2, 0)     # [8, 577, 2]
-                        conv_result = conv_result.permute(1, 2, 0)
-
-                        # print("______-CONV_RESULT SHAPe-______-", conv_result.shape)
-                        # print(HEY)
-
-                        # print(HEIYIO)
-                        #####################################GOhoiheoighoiehgoiehrg
-                        # print("-___----__target size", target_size)
-
-                        # pooled = F.adaptive_avg_pool1d(
-                        #     la,  # [B, C, L]
-                        #     target_spatial_size
-                        # ).permute(0, 2, 1)  # [B, H*W, C]
-
-                        # print("----____---___pooled shape", pooled.shape, "*88*****88****888*****8")
-
-                        # spatial_4d = pooled.reshape(B, target_size, target_size, C).permute(0, 3, 1, 2)
-
-                        # print("___--------------_____--- spatial 4d shape...", spatial_4d.shape)
-
-                        ##########################################################gfhrehrrrerjrxdehjrtjh
-
-
-                        # # Adaptive pooling to target spatial size
-                        # # Pool sequence dimension to target spatial size
-                        # pooled = F.adaptive_avg_pool1d(
-                        #     la.permute(1, 2, 0),  # [B, C, L]
-                        #     # self.target_h * self.target_w
-                        #     577
-                        # ).permute(0, 2, 1)  # [B, H*W, C]
-
-
-                        # Simply use 1D interpolation along sequence dimension
-                        # la_permuted = la.permute(1, 2, 0)  # [2, 8, 577]
-                        
-                        # seq_len, batch_size, features = la.shape
-                        # h = w = int(math.sqrt(seq_len-1))  # e.g., 577 -> 24x24 (approximately) L/D = Feature dimension
-                        # print("-----___lora a shape", la.shape)       # torch.Size([577, 2, 8]) - for clip vision
-                        # print("-----___lora a shape", la.shape)       # torch.Size([77, 19, 8]) - for clip text
-                        # print("-----___lora a shape", la.shape)       # torch.Size([38, 576, 8]) - for swin transformer mlp
-                        print("-----___lora a shape", la.shape)       # torch.Size([1152, 256, 8]) - for last attn mlp
-                        # print(HOIYE)
-
-                        # Reshape to 4D: (batch, channels, height, width)
-                        # la_4d = la.permute(1, 2, 0).reshape(batch_size, features, h, w)
-
-                        # feat_2 = F.interpolate(la_permuted, scale_factor=2, mode='linear', align_corners=False, )
-
-                        # feat_1 = F.interpolate(feat_2, scale_factor=0.5, mode='linear', align_corners=False, )
-
-                        # print("_--____---___--__LoRA shapes 1___", la_permuted.shape)    
-                        # print("_--____---___--__LoRA shapes 2___", feat_1.shape)
-                        # print("_--____---___--__LoRA shapes 3___", feat_2.shape)
-                        # print(JHYE)
-                        # lca = self.conv1(la)
-                        #################################################################################################
-                        # print("-____----______conv layer shape after lora", lca.shape)
-                        # la = lora_A(dropout(x))         # la : L, B, D (when conv lora is not used...)
-                        # lb = lora_B(la)                   #(when conv lora is not used...)
-                        lb = lora_B(conv_result)
-                        # print("-----___lora b shape", lb.shape)       # torch.Size([577, 2, 1024/4096]) - for clip vision
-                        # print("-----___lora b shape", lb.shape)       # torch.Size([77, 19, 3072/768 - based on ip]) - for clip text
-                        # print("-----___lora b shape", lb.shape)       # torch.Size([38, 576, 128/512]) - for swin transformer mlp
-                        print("-----___lora b shape", lb.shape)       # torch.Size([1152, 256, 128/512 (based on ip)]) - for last attn mlp
-                        scaled_lora = lb * scaling
+                    # if conv_flat.shape[1] != L_orig:  # 576 != 577
+                    #     conv_upsampled = F.interpolate(
+                    #         conv_flat.permute(0, 2, 1),  # [2, 8, 576]
+                    #         size=L_orig,  # Interpolate back to 577
+                    #         mode='linear',
+                    #         align_corners=False
+                    #     ).permute(0, 2, 1)  # [2, 577, 8]
+                    # else:
+                    #     conv_upsampled = conv_flat
                     
-                    else:
-                        la = lora_A(dropout(x))
-                        lb = lora_B(la)
-                        scaled_lora = lb * scaling
+                    # # Step 3: Convert back to channel-first then to original format
+                    # # Current: [2, 577, 8] (batch, seq, channels)
+                    # conv_result = conv_upsampled.permute(0, 2, 1)  # [2, 8, 577]
+                    # conv_result = conv_result.permute(1, 2, 0)     # [8, 577, 2]
+                    # conv_result = conv_result.permute(1, 2, 0)
+
+                    # # print("______-CONV_RESULT SHAPe-______-", conv_result.shape)
+                    # # print(HEY)
+
+                    # # print(HEIYIO)
+                    # #####################################GOhoiheoighoiehgoiehrg
+                    # # print("-___----__target size", target_size)
+
+                    # # pooled = F.adaptive_avg_pool1d(
+                    # #     la,  # [B, C, L]
+                    # #     target_spatial_size
+                    # # ).permute(0, 2, 1)  # [B, H*W, C]
+
+                    # # print("----____---___pooled shape", pooled.shape, "*88*****88****888*****8")
+
+                    # # spatial_4d = pooled.reshape(B, target_size, target_size, C).permute(0, 3, 1, 2)
+
+                    # # print("___--------------_____--- spatial 4d shape...", spatial_4d.shape)
+
+                    # ##########################################################gfhrehrrrerjrxdehjrtjh
+
+
+                    # # # Adaptive pooling to target spatial size
+                    # # # Pool sequence dimension to target spatial size
+                    # # pooled = F.adaptive_avg_pool1d(
+                    # #     la.permute(1, 2, 0),  # [B, C, L]
+                    # #     # self.target_h * self.target_w
+                    # #     577
+                    # # ).permute(0, 2, 1)  # [B, H*W, C]
+
+
+                    # # Simply use 1D interpolation along sequence dimension
+                    # # la_permuted = la.permute(1, 2, 0)  # [2, 8, 577]
+                    
+                    # # seq_len, batch_size, features = la.shape
+                    # # h = w = int(math.sqrt(seq_len-1))  # e.g., 577 -> 24x24 (approximately) L/D = Feature dimension
+                    # # print("-----___lora a shape", la.shape)       # torch.Size([577, 2, 8]) - for clip vision
+                    # # print("-----___lora a shape", la.shape)       # torch.Size([77, 19, 8]) - for clip text
+                    # # print("-----___lora a shape", la.shape)       # torch.Size([38, 576, 8]) - for swin transformer mlp
+                    # print("-----___lora a shape", la.shape)       # torch.Size([1152, 256, 8]) - for last attn mlp
+                    # # print(HOIYE)
+
+                    # # Reshape to 4D: (batch, channels, height, width)
+                    # # la_4d = la.permute(1, 2, 0).reshape(batch_size, features, h, w)
+
+                    # # feat_2 = F.interpolate(la_permuted, scale_factor=2, mode='linear', align_corners=False, )
+
+                    # # feat_1 = F.interpolate(feat_2, scale_factor=0.5, mode='linear', align_corners=False, )
+
+                    # # print("_--____---___--__LoRA shapes 1___", la_permuted.shape)    
+                    # # print("_--____---___--__LoRA shapes 2___", feat_1.shape)
+                    # # print("_--____---___--__LoRA shapes 3___", feat_2.shape)
+                    # # print(JHYE)
+                    # # lca = self.conv1(la)
+                    # #################################################################################################
+                    # # print("-____----______conv layer shape after lora", lca.shape)
+                    # # la = lora_A(dropout(x))         # la : L, B, D (when conv lora is not used...)
+                    # # lb = lora_B(la)                   #(when conv lora is not used...)
+                    # lb1 = lora_B1(conv_result)
+
+
+                    la1 = lora_A1(dropout(x))         # la : L, B, D
+                    la = lora_A(la1)         # la : L, B, D
+
+                    lb1 = lora_B1(la)
+                    
+                    lb = lora_B(lb1)
+                    # print("-----___lora b shape", lb.shape)       # torch.Size([577, 2, 1024/4096]) - for clip vision
+                    # print("-----___lora b shape", lb.shape)       # torch.Size([77, 19, 3072/768 - based on ip]) - for clip text
+                    # print("-----___lora b shape", lb.shape)       # torch.Size([38, 576, 128/512]) - for swin transformer mlp
+                    print("-----___lora b shape", lb.shape)       # torch.Size([1152, 256, 128/512 (based on ip)]) - for last attn mlp
+                    scaled_lora = lb * scaling
+                    
+                    # else:
+                    #     la = lora_A(dropout(x))
+                    #     lb = lora_B(la)
+                    #     scaled_lora = lb * scaling
 
                     result = result + scaled_lora
 
@@ -1170,10 +1213,21 @@ class Embedding(nn.Module, LoraLayer):
             lora_dropout_layer = nn.Identity()
 
         self.lora_dropout[adapter_name] = lora_dropout_layer
-        # Actual trainable parameters
-        weight_A = torch.randn((r, self.in_features))
-        weight_B = torch.randn((self.out_features, r))
+
+        ##### Actual trainable parameters####
+
+        # weight_A = torch.randn((r, self.in_features))
+        # weight_B = torch.randn((self.out_features, r))
+
+        ####################################
+        weight_A1 = torch.randn((r, r/2))
+        weight_A = torch.randn((r/2, self.in_features))
+        weight_B1 = torch.randn((self.out_features, r/2))
+        weight_B = torch.randn((r/2, r))
+
+        self.lora_embedding_A1[adapter_name] = nn.Parameter(weight_A1)
         self.lora_embedding_A[adapter_name] = nn.Parameter(weight_A)
+        self.lora_embedding_B1[adapter_name] = nn.Parameter(weight_B1)
         self.lora_embedding_B[adapter_name] = nn.Parameter(weight_B)
         self.lora_bias[adapter_name] = lora_bias
 
@@ -1357,9 +1411,17 @@ class Embedding(nn.Module, LoraLayer):
 
                 if active_adapter not in self.lora_variant:  # vanilla LoRA
                     embedding_A = self.lora_embedding_A[active_adapter].T
+                    embedding_A1 = self.lora_embedding_A1[active_adapter].T
                     embedding_B = self.lora_embedding_B[active_adapter].T
+                    embedding_B1 = self.lora_embedding_B1[active_adapter].T
                     scaling = self.scaling[active_adapter]
-                    after_A = self._embed(x, embedding_A)
+                    after_A1 = self._embed(x, embedding_A1)
+                    after_A = self._embed(embedding_A1, embedding_A)
+
+                    import ipdb
+                    ipdb.set_trace(context=10)
+
+                    
                     result = result + (after_A @ embedding_B) * scaling
                 else:
                     result = self.lora_variant[active_adapter].forward(
