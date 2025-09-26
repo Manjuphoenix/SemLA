@@ -1004,10 +1004,64 @@ class Linear(nn.Module, LoraLayer):
 
 
                     # Interpolate similar to conv lora here
-                    spatial_features = F.interpolate(
+                    spatial_features2x = F.interpolate(
+                        spatial_features.permute(0, 3, 1, 2),  # [B, C, H, W]
+                        # size=(spatial_size // 2, spatial_size // 2),  # Downsample by factor of 2
+                        scale_factor=2.0,
+                        # scale_factor=0.5,
+                        mode='bicubic',
+                        align_corners=False
+                    ).permute(0, 2, 3, 1)
+
+                    spatial_features3x = F.interpolate(
                         spatial_features.permute(0, 3, 1, 2),  # [B, C, H, W]
                         # size=(spatial_size // 2, spatial_size // 2),  # Downsample by factor of 2
                         scale_factor=3.0,
+                        # scale_factor=0.5,
+                        mode='bicubic',
+                        align_corners=False
+                    ).permute(0, 2, 3, 1)
+
+                    spatial_features4x = F.interpolate(
+                        spatial_features.permute(0, 3, 1, 2),  # [B, C, H, W]
+                        # size=(spatial_size // 2, spatial_size // 2),  # Downsample by factor of 2
+                        scale_factor=4.0,
+                        # scale_factor=0.5,
+                        mode='bicubic',
+                        align_corners=False
+                    ).permute(0, 2, 3, 1)
+                    
+                    spatial_features5x = F.interpolate(
+                        spatial_features.permute(0, 3, 1, 2),  # [B, C, H, W]
+                        # size=(spatial_size // 2, spatial_size // 2),  # Downsample by factor of 2
+                        scale_factor=5.0,
+                        # scale_factor=0.5,
+                        mode='bicubic',
+                        align_corners=False
+                    ).permute(0, 2, 3, 1)
+
+                    spatial_features6x = F.interpolate(
+                        spatial_features.permute(0, 3, 1, 2),  # [B, C, H, W]
+                        # size=(spatial_size // 2, spatial_size // 2),  # Downsample by factor of 2
+                        scale_factor=6.0,
+                        # scale_factor=0.5,
+                        mode='bicubic',
+                        align_corners=False
+                    ).permute(0, 2, 3, 1)
+
+                    spatial_features7x = F.interpolate(
+                        spatial_features.permute(0, 3, 1, 2),  # [B, C, H, W]
+                        # size=(spatial_size // 2, spatial_size // 2),  # Downsample by factor of 2
+                        scale_factor=7.0,
+                        # scale_factor=0.5,
+                        mode='bicubic',
+                        align_corners=False
+                    ).permute(0, 2, 3, 1)
+
+                    spatial_features8x = F.interpolate(
+                        spatial_features.permute(0, 3, 1, 2),  # [B, C, H, W]
+                        # size=(spatial_size // 2, spatial_size // 2),  # Downsample by factor of 2
+                        scale_factor=8.0,
                         # scale_factor=0.5,
                         mode='bicubic',
                         align_corners=False
@@ -1017,29 +1071,103 @@ class Linear(nn.Module, LoraLayer):
                     print("--__---_First INterpolate__---___--", spatial_features.shape, "Reshaped LoraA output to 4D for conv")   # Should be [1, 25, 25, 8]
 
                     # Process through conv
-                    spatial_features = spatial_features.permute(0, 3, 1, 2)
-                    conv_output = self.conv1(spatial_features)
+                    spatial_features2x = spatial_features2x.permute(0, 3, 1, 2)
+                    spatial_features3x = spatial_features3x.permute(0, 3, 1, 2)
+                    spatial_features4x = spatial_features4x.permute(0, 3, 1, 2)
+                    spatial_features5x = spatial_features5x.permute(0, 3, 1, 2)
+                    spatial_features6x = spatial_features6x.permute(0, 3, 1, 2)
+                    spatial_features7x = spatial_features7x.permute(0, 3, 1, 2)
+                    spatial_features8x = spatial_features8x.permute(0, 3, 1, 2)
+                    
+                    conv_output2x = self.conv1(spatial_features2x)
+                    conv_output3x = self.conv1(spatial_features3x)
+                    conv_output4x = self.conv1(spatial_features4x)
+                    conv_output5x = self.conv1(spatial_features5x)
+                    conv_output6x = self.conv1(spatial_features6x)
+                    conv_output7x = self.conv1(spatial_features7x)
+                    conv_output8x = self.conv1(spatial_features8x)
 
                     # Reshape back
-                    B, C, H, W = conv_output.shape
+                    # B2, C2, H2, W2 = conv_output2x.shape
+                    # B3, C3, H3, W3 = conv_output3x.shape
+                    # B4, C4, H4, W4 = conv_output4x.shape
+                    # B5, C5, H5, W5 = conv_output5x.shape
+                    # B6, C6, H6, W6 = conv_output6x.shape
+                    # B7, C7, H7, W7 = conv_output7x.shape
+                    # B8, C8, H8, W8 = conv_output8x.shape
                     # conv_flat = conv_output.permute(0, 2, 3, 1)  # [B, H, W, C]
 
-                    print("____---____--_____-H and W----------", H, W, "*******8888****888***88****88**")
+                    # print("____---____--_____-H and W----------", H, W, "*******8888****888***88****88**")
 
                     # Reverse the interpolation here
                     # Interpolate similar to conv lora here
-                    conv_flat = F.interpolate(
-                        conv_output,
-                        size=(int(H), int(W)),  # Upsample by factor of 2
+                    conv_flat2x = F.interpolate(
+                        conv_output2x,
+                        size=(int(spatial_size), int(spatial_size)),  # Upsample by factor of 2
+                        mode='bilinear',
+                        align_corners=False
+                    )
+
+                    conv_flat3x = F.interpolate(
+                        conv_output3x,
+                        size=(int(spatial_size), int(spatial_size)),  # Upsample by factor of 2
+                        mode='bilinear',
+                        align_corners=False
+                    )
+
+
+
+                    conv_flat4x = F.interpolate(
+                        conv_output4x,
+                        size=(int(spatial_size), int(spatial_size)),  # Upsample by factor of 2
+                        mode='bilinear',
+                        align_corners=False
+                    )
+
+                    conv_flat5x = F.interpolate(
+                        conv_output5x,
+                        size=(int(spatial_size), int(spatial_size)),  # Upsample by factor of 2
+                        mode='bilinear',
+                        align_corners=False
+                    )
+
+                    conv_flat6x = F.interpolate(
+                        conv_output6x,
+                        size=(int(spatial_size), int(spatial_size)),  # Upsample by factor of 2
+                        mode='bilinear',
+                        align_corners=False
+                    )
+
+
+
+                    conv_flat7x = F.interpolate(
+                        conv_output7x,
+                        size=(int(spatial_size), int(spatial_size)),  # Upsample by factor of 2
+                        mode='bilinear',
+                        align_corners=False
+                    )
+
+                    conv_flat8x = F.interpolate(
+                        conv_output8x,
+                        size=(int(spatial_size), int(spatial_size)),  # Upsample by factor of 2
                         mode='bilinear',
                         align_corners=False
                     )
                     
-                    print("-____---_Reverse interpolate____---", conv_flat.shape, "Reshaped conv output back to 4D after conv and interpolation")   # Should be [1, 50, 50, 8]
+
+                    # print("---____--_conv feat shapes-___--", conv_flat2x.shape, conv_flat3x.shape, conv_flat4x.shape, conv_flat5x.shape, conv_flat6x.shape, conv_flat7x.shape, conv_flat8x.shape, "*******8888****888***88****88**")
+
+                    # combine all those features into a single one
+                    # conv_flat = torch.cat([conv_flat2x, conv_flat3x, conv_flat4x, conv_flat5x, conv_flat6x, conv_flat7x, conv_flat8x], dim=0)
+
+                    conv_flat = conv_flat2x + conv_flat3x + conv_flat4x + conv_flat5x + conv_flat6x + conv_flat7x + conv_flat8x
+                    # print("---____--_conv feat shapes combined-___--", conv_flat.shape, "*******8888****888***88****88**")
+                    # # print(HEY)
+                    # print("-____---_Reverse interpolate____---", conv_flat.shape, "Reshaped conv output back to 4D after conv and interpolation")   # Should be [1, 50, 50, 8]
                     # print(HEY)
 
                     # Remove padding to match original sequence length
-                    conv_flat = conv_flat.reshape(B, -1, C)  # [B, H*W, C]
+                    conv_flat = conv_flat.reshape(B, -1, D)  # [B, H*W, C]
                     conv_flat = conv_flat[:, :self._seq_len_cache, :]  # Only keep original sequence length
 
                     # Convert back to sequence-first format
