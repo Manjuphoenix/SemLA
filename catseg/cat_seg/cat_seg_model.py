@@ -13,6 +13,11 @@ from detectron2.modeling.postprocessing import sem_seg_postprocess
 from detectron2.structures import ImageList
 from detectron2.utils.memory import _ignore_torch_cuda_oom
 
+
+############### SAM2 ###############
+# from sam2.build_sam import build_sam2
+# from sam2.sam2_image_predictor import SAM2ImagePredictor
+
 from einops import rearrange
 
 @META_ARCH_REGISTRY.register()
@@ -41,6 +46,13 @@ class CATSeg(nn.Module):
         """
         super().__init__()
         self.backbone = backbone
+
+        ######################## SAM2 ########################
+        # checkpoint = "./checkpoints/sam2.1_hiera_large.pt"
+        # model_cfg = "configs/sam2.1/sam2.1_hiera_l.yaml"
+        # predictor = SAM2ImagePredictor(build_sam2(model_cfg, checkpoint))
+
+        
         self.sem_seg_head = sem_seg_head
         if size_divisibility < 0:
             size_divisibility = self.backbone.size_divisibility
@@ -56,6 +68,8 @@ class CATSeg(nn.Module):
 
         self.clip_finetune = clip_finetune
         for name, params in self.sem_seg_head.predictor.clip_model.named_parameters():
+
+            # print(HEY)
             if "transformer" in name:
                 if clip_finetune == "prompt":
                     params.requires_grad = True if "prompt" in name else False
@@ -141,7 +155,13 @@ class CATSeg(nn.Module):
                     each class for each pixel.
         """
         
+
+        
         images = [x["image"].to(self.device) for x in batched_inputs]
+
+        # print(batched_inputs, "__-----___----___--")
+        # print(OIHO)
+
         if not self.training and self.sliding_window:
             return self.inference_sliding_window(batched_inputs)
 
@@ -150,24 +170,67 @@ class CATSeg(nn.Module):
 
         self.layers = []
 
-        clip_images_resized = F.interpolate(clip_images.tensor, size=self.clip_resolution, mode='bilinear', align_corners=False, )
-        clip_features = self.sem_seg_head.predictor.clip_model.encode_image(clip_images_resized, dense=True)
+        # print("_-_CLIP IMAGE INPUT SHAPE..._-__", self.clip_resolution)
+        # print(HEYpoj)
 
+
+        clip_images_resized = F.interpolate(clip_images.tensor, size=self.clip_resolution, mode='bilinear', align_corners=False, )
+        # clip_images_resized1 = F.interpolate(clip_images.tensor, scale_factor=1.5, mode='bilinear', align_corners=False, )
+        # clip_images_resized2 = F.interpolate(clip_images.tensor, scale_factor=0.5, mode='bilinear', align_corners=False, )
+
+        # print("_-_CLIP IMAGE1 INPUT SHAPE..._-__", clip_images_resized.shape)  #torch.Size([2, 3, 336, 336])
+        # print("_-_CLIP IMAGE2 INPUT SHAPE..._-__", clip_images_resized1.shape)  #torch.Size([2, 3, 336, 336])
+        # print("_-_CLIP IMAGE3 INPUT SHAPE..._-__", clip_images_resized2.shape)  #torch.Size([2, 3, 336, 336])
+        # print(OEHYU)
+
+        clip_features = self.sem_seg_head.predictor.clip_model.encode_image(clip_images_resized, dense=True)
+        # The above line will be calling the following file and function: "/home/SemLA/catseg/cat_seg/third_party/model_vpt.py", line 427, in encode_image
+
+    #######################################################################
         image_features = clip_features[:, 1:, :]
 
         # CLIP ViT features for guidance
+
+        ######## HERE on its the decoder network that upsamples the images..#################
         res3 = rearrange(image_features, "B (H W) C -> B C H W", H=24)
         res4 = rearrange(self.layers[0][1:, :, :], "(H W) B C -> B C H W", H=24)
         res5 = rearrange(self.layers[1][1:, :, :], "(H W) B C -> B C H W", H=24)
+        # print("---___------____----___--_", res4.shape, "BEFORE R4 UPSAMP__--_____---_____-__")
+        # print("---___------____----___--_", res5.shape, "BEFORE R5 UPSAMP__--_____---_____-__")
         res4 = self.upsample1(res4)
         res5 = self.upsample2(res5)
+        # print("---___------____----___--_", res4.shape, "AFTER R4 UPSAMP__--_____---_____-__")
+        # print("---___------____----___--_", res5.shape, "AFTER R5 UPSAMP__--_____---_____-__")
+        # print(HIOHOI)
         features = {'res5': res5, 'res4': res4, 'res3': res3,}
 
+        # print("----_____---____---___---____", features["res3"].shape, "Scaled clip features....")
+        # print("----_____---____---___---____", features["res4"].shape, "Scaled clip features....")
+        # print("----_____---____---___---____", features["res5"].shape, "Scaled clip features....")
+        # print(HEY)
+
         outputs = self.sem_seg_head(clip_features, features)
+        # print("__--____----___--____", outputs.shape, "__---____--____---_")  # torch.size(2, 19, 96, 96)
+        # print(OHIHIOH)
+
+
+        ##################################################################################################
         if self.training:
             targets = torch.stack([x["sem_seg"].to(self.device) for x in batched_inputs], dim=0)
             outputs = F.interpolate(outputs, size=(targets.shape[-2], targets.shape[-1]), mode="bilinear", align_corners=False)
             
+            # print("____-----___---____---___--____", targets.shape, outputs.shape, "__---____---___---____--_____")
+            # print("____-----___---____---___--____", targets[0].unsqueeze(0).detach().cpu().shape, outputs[0][0].unsqueeze(0).detach().cpu().shape, "__---____---___---____--_____")
+            import cv2
+            import time
+
+            # cv2.imwrite("target.png", targets[0].unsqueeze(0).permute(1,2,0).detach().cpu().numpy() )
+            # cv2.imwrite("target1.png", targets[1].unsqueeze(0).permute(1,2,0).detach().cpu().numpy() )
+            # for i in range(outputs.shape[1]):
+            #     cv2.imwrite("pred"+ str(i)+".png", outputs[0][i].unsqueeze(0).permute(1,2,0).detach().cpu().numpy()*255 )
+            #     time.sleep(1)
+            # cv2.imwrite("pred.png", outputs[0][0].unsqueeze(0).permute(1,2,0).detach().cpu().numpy()*255 )
+            # print(OJOIJO)
             num_classes = outputs.shape[1]
             mask = targets != self.sem_seg_head.ignore_value
 
@@ -175,8 +238,34 @@ class CATSeg(nn.Module):
             _targets = torch.zeros(outputs.shape, device=self.device)
             _onehot = F.one_hot(targets[mask], num_classes=num_classes).float()
             _targets[mask] = _onehot
-            
+
+            # outputs_tmp = outputs[0].unsqueeze(0).permute(1,2,0)
+            # target_tmp = _targets[0].unsqueeze(0).permute(1,2,0)
+
+            a = outputs[0].permute(2,0,1)
+            b = _targets[0].permute(2,0,1)
+
+
+            # for i in range(num_classes):
+            #     cv2.imwrite("pred"+ str(i)+".png", a[i].detach().cpu().numpy()*255 )
+            #     cv2.imwrite("target"+ str(i)+".png", b[i].detach().cpu().numpy()*255 )
+            #     time.sleep(1)
+
+            # print("____----___---____--", outputs[0].permute(2,0,1).shape , "____--_____---_____-____")
+            # print("_--_____----____", _targets.shape, "__----___----___---__")   
+            # Above gives the following: torch.Size([2, 384, 384, 19]) as shape with 19 referring to the num of classes...
+            # print(OHO)
+
+            ############################ SAM2 ############################
+            # with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
+            #     self.predictor.set_image(images)
+            #     masks, _, _ = self.predictor.predict("Identify the following objects: car, person, building, sky and road")
+
+            #     print("_-_____--____---____--_____", masks.shape, "********888*****88*****88888*")
+            #     print(HEY)
+
             loss = F.binary_cross_entropy_with_logits(outputs, _targets)
+            # print("_------____---____---_", loss, "*888****888****888*****")
             losses = {"loss_sem_seg" : loss}
             return losses
 
@@ -188,6 +277,7 @@ class CATSeg(nn.Module):
 
             output = sem_seg_postprocess(outputs[0], image_size, height, width)
             processed_results = [{'sem_seg': output}]
+
             return processed_results
 
 
@@ -228,4 +318,11 @@ class CATSeg(nn.Module):
         height = batched_inputs[0].get("height", out_res[0])
         width = batched_inputs[0].get("width", out_res[1])
         output = sem_seg_postprocess(outputs[0], out_res, height, width)
+
+        # import cv2
+        # # print("=---------", output.shape, "_***888****888***")
+        # # print(HOH)
+        # for i in range(13):
+        #     cv2.imwrite("pred"+ str(i)+".png", output[i].detach().cpu().numpy()*255 )
+        # print(HEY)
         return [{'sem_seg': output}]

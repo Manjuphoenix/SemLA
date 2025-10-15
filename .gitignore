@@ -2,6 +2,8 @@ __pycache__/
 .venv/
 wandb/
 catseg/loradb/
+catseg/datasets/
 catseg/output/
 catseg/models/
+catseg/msrs_rgb_40k_ckpt/
 results/
