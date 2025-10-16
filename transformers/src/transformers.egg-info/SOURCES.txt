@@ -238,7 +238,9 @@ src/transformers/models/auto/image_processing_auto.py
 src/transformers/models/auto/modeling_auto.py
 src/transformers/models/auto/modeling_flax_auto.py
 src/transformers/models/auto/modeling_tf_auto.py
+src/transformers/models/auto/processing_auto copy.py
 src/transformers/models/auto/processing_auto.py
+src/transformers/models/auto/processing_auto_old_Version.py
 src/transformers/models/auto/tokenization_auto.py
 src/transformers/models/auto/video_processing_auto.py
 src/transformers/models/autoformer/__init__.py
