@@ -770,3 +770,5 @@ def add_lora_config(
     cfg.MODEL.LORA.USE_RSLORA = False
     cfg.MODEL.LORA.USE_DORA = False
     cfg.MODEL.LORA.BIAS = "none"
+    cfg.MODEL.LORA.CONV_LORA_EXPERT_NUM = 4  # Number of experts for MoE
+    cfg.MODEL.LORA.USE_CONV_LORA_MOE = True  # Set to True to enable MoE

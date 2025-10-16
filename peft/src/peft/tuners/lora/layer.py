@@ -1117,7 +1117,7 @@ class Linear(nn.Module, LoraLayer):
                     # print("-----___lora b shape", lb.shape)       # torch.Size([577, 2, 1024/4096]) - for clip vision
                     # print("-----___lora b shape", lb.shape)       # torch.Size([77, 19, 3072/768 - based on ip]) - for clip text
                     # print("-----___lora b shape", lb.shape)       # torch.Size([38, 576, 128/512]) - for swin transformer mlp
-                    print("-----___lora b shape", lb.shape)       # torch.Size([1152, 256, 128/512 (based on ip)]) - for last attn mlp
+                    # print("-----___lora b shape", lb.shape)       # torch.Size([1152, 256, 128/512 (based on ip)]) - for last attn mlp
                     scaled_lora = lb * scaling
                     
                     # else:
@@ -2591,9 +2591,19 @@ def dispatch_default(
                 "Setting fan_in_fan_out to False."
             )
             kwargs["fan_in_fan_out"] = lora_config.fan_in_fan_out = False
+        
+        # Add MoE parameters if they exist in the config
+        if hasattr(lora_config, 'conv_lora_expert_num'):
+            kwargs['conv_lora_expert_num'] = lora_config.conv_lora_expert_num
+        if hasattr(lora_config, 'use_conv_lora_moe'):
+            kwargs['use_conv_lora_moe'] = lora_config.use_conv_lora_moe
+        
         kwargs.update(lora_config.loftq_config)
-        new_module = Linear(target, adapter_name, **kwargs)
-        # print("_____----____---_____--_____-", new_module, "_wghoiwehgioewhio__-")
+        
+        # Import and use your custom Linear class with convolutional processing
+        from .layer_conv_lora import Linear as ConvLoRALinear
+        new_module = ConvLoRALinear(target, adapter_name, **kwargs)
+        
     elif isinstance(target_base_layer, Conv1D):
         if not kwargs["fan_in_fan_out"]:
             warnings.warn(

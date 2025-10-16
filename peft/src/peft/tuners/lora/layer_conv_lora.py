@@ -874,7 +874,7 @@ class Linear(nn.Module, LoraLayer):
             elif "base_layer" in name or "weight" in name or "bias" in name:
                 base_params += param_count
                 component = "Base"
-                    else:
+            else:
                 other_params += param_count
                 component = "Other"
                 
@@ -967,7 +967,8 @@ class Linear(nn.Module, LoraLayer):
                     ######## ORiginal process
                     # result = result + lora_B(lora_A(dropout(x))) * scaling
 
-                    ######### Broken process for modifications...... 
+                    ######### Broken process for modifications......
+                    print("Shape of x before lora a", x.shape)
                     la = lora_A(dropout(x))         # la : L, B, D
                     # print(la.shape, "before first permute")     #torch.Size([577, 2, 8])
                     L_orig, B_orig, C_orig = la.shape
@@ -992,29 +993,36 @@ class Linear(nn.Module, LoraLayer):
                         target_spatial_size  # Pool to 576
                     ).permute(0, 2, 1)  # [2, 576, 8]
 
-                    print("Pooled shape:", pooled.shape)
+                    # print("Pooled shape:", pooled.shape)
                     B_new, spatial_tokens, C_new = pooled.shape  # B_new=2, spatial_tokens=576, C_new=8
 
                     spatial_4d = pooled.reshape(B_new, target_size, target_size, C_new).permute(0, 3, 1, 2)
                     print("Spatial 4D shape:", spatial_4d.shape)  # Should be [2, 8, 24, 24]
                     # print(HEIYIO)
-                    print(f"Conv1 training mode: {self.conv1.training}")
+                    #print(f"Conv1 training mode: {self.conv1.training}")
                     # import ipdb;
                     # ipdb.set_trace(context=10)
 
                     if self.use_conv_lora_moe and hasattr(self, 'lora_moe_experts'):
                         # MoE Conv processing
                         gates, moe_loss = self.lora_moe_gating(spatial_4d)
+                        #print("Gates shape:", gates.shape) # (batch, num_experts)
+                        #print("MoE loss:", moe_loss)
+                        #import time
+                        #time.sleep(60)
+
                         dispatcher = SparseDispatcher(self.num_experts, gates)
                         expert_inputs = dispatcher.dispatch(spatial_4d)
                         expert_outputs = []
                         
                         for i in range(self.num_experts):
                             if len(expert_inputs[i]) == 0:
+                                print("No expert input for expert", i, ".... skipping")
                                 continue
                             upsample_ratio = self.upsample_ratios[i]
                             cur_res = expert_inputs[i]
                             if upsample_ratio != 1:
+                                #print("Upsampling ratio for expert", i, ":", upsample_ratio)
                                 cur_res = F.interpolate(cur_res, scale_factor=upsample_ratio, mode="bicubic")
                             cur_res = self.lora_moe_experts[i](cur_res)
                             if upsample_ratio != 1:
@@ -1387,7 +1395,7 @@ class Embedding(nn.Module, LoraLayer):
                 if active_adapter not in self.lora_variant:  # vanilla LoRA
                     embedding_A = self.lora_embedding_A[active_adapter].T
                     embedding_B = self.lora_embedding_B[active_adapter].T
-                scaling = self.scaling[active_adapter]
+                    scaling = self.scaling[active_adapter]
                     after_A = self._embed(x, embedding_A)
                     result = result + (after_A @ embedding_B) * scaling
                 else:
@@ -1544,9 +1552,9 @@ class _ConvNd(nn.Module, LoraLayer):
                     # Note that safe_merge will be slower than the normal merge
                     # because of the copy operation.
                     orig_weight = base_layer.weight.data.clone()
-                if active_adapter not in self.lora_variant:  # vanilla LoRA
-                        delta_weight = self.get_delta_weight(active_adapter)
-                        orig_weight += delta_weight.to(orig_dtype)
+                    if active_adapter not in self.lora_variant:  # vanilla LoRA
+                            delta_weight = self.get_delta_weight(active_adapter)
+                            orig_weight += delta_weight.to(orig_dtype)
                     else:
                         orig_weight = self.lora_variant[active_adapter].merge_safe(self, active_adapter, orig_weight)
 
@@ -1600,7 +1608,7 @@ class _ConvNd(nn.Module, LoraLayer):
                     orig_dtype = weight.dtype
                     delta_weight = self.get_delta_weight(active_adapter)
                     weight.data -= delta_weight.to(orig_dtype)
-                    else:
+                else:
                     unmerged = self.lora_variant[active_adapter].unmerge(self, active_adapter, weight)
                     weight.data = unmerged
 
@@ -1636,7 +1644,7 @@ class _ConvNd(nn.Module, LoraLayer):
             output_tensor = (weight_B.squeeze(3).squeeze(2) @ weight_A.squeeze(3).squeeze(2)).unsqueeze(2).unsqueeze(
                 3
             ) * self.scaling[adapter]
-                    else:
+        else:
             output_tensor = self.conv_fn(weight_A.transpose(0, 1), weight_B)
 
             if self.get_base_layer().groups > 1:

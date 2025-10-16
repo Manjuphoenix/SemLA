@@ -871,6 +871,8 @@ def add_lora(cfg, model):
         bias=cfg.MODEL.LORA.BIAS,
         use_rslora=cfg.MODEL.LORA.USE_RSLORA,
         use_dora=cfg.MODEL.LORA.USE_DORA,
+        use_conv_lora_moe=cfg.MODEL.LORA.USE_CONV_LORA_MOE,
+        conv_lora_expert_num=cfg.MODEL.LORA.CONV_LORA_EXPERT_NUM,
     )
     peft_model = peft.get_peft_model(model, config, adapter_name=cfg.MODEL.LORA.NAME)
     
