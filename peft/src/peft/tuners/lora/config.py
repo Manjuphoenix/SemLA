@@ -582,6 +582,18 @@ class LoraConfig(PeftConfig):
             )
         },
     )
+    conv_lora_expert_num: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "Number of experts for MoE Conv LoRA. Only used when `use_conv_lora_moe=True`."
+        },
+    )
+    use_conv_lora_moe: bool = field(
+        default=False,
+        metadata={
+            "help": "Whether to use MoE Conv LoRA. Only used when `use_conv_lora_moe=True`."
+        },
+    )
 
     def to_dict(self):
         """

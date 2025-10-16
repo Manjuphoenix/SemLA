@@ -24,6 +24,8 @@ import torch.nn.functional as F
 from packaging import version
 from torch import svd_lowrank
 from transformers.pytorch_utils import Conv1D
+import numpy as np
+from torch.distributions.normal import Normal
 
 from peft.tuners._buffer_dict import BufferDict
 from peft.tuners.tuners_utils import BaseTunerLayer, check_adapters_to_merge
@@ -644,41 +646,58 @@ class Linear(nn.Module, LoraLayer):
         use_rslora: bool = False,
         use_dora: bool = False,
         lora_bias: bool = False,
+        conv_lora_expert_num: Optional[int] = None,
+        use_conv_lora_moe: bool = False,
         **kwargs,
     ) -> None:
         # print(LINEAR)
         super().__init__()
         LoraLayer.__init__(self, base_layer, **kwargs)
         self.fan_in_fan_out = fan_in_fan_out
+        self.use_conv_lora_moe = use_conv_lora_moe
+        self.conv_lora_expert_num = conv_lora_expert_num
 
-        ############### conv layer for LoRA ###########
-        self.conv1 = nn.Conv2d(8, 24, kernel_size=3, stride=2, padding=1, bias=False)
-        self.conv1 = self.conv1.cuda()
+        # Initialize MoE components if enabled
+        if use_conv_lora_moe and conv_lora_expert_num is not None and conv_lora_expert_num > 0:
+            self.lora_moe_gating = MoEGate(M=conv_lora_expert_num, d=r, K=1)
+            self.lora_moe_experts = nn.ModuleList([])
+            self.upsample_ratios = list(range(1, conv_lora_expert_num + 1))
+            for upsample_ratio in self.upsample_ratios:
+                expert = nn.Conv2d(in_channels=r, out_channels=r, kernel_size=3, stride=1, padding=1, bias=True)
+                expert.bias.data.zero_()
+                self.lora_moe_experts.append(nn.Sequential(expert, nn.GELU()))
+            self.num_experts = conv_lora_expert_num
+            self.multiply_by_gates = False
 
-        self.conv1.weight.requires_grad_(True)
+        else:
+            ############### conv layer for LoRA ###########
+            self.conv1 = nn.Conv2d(8, 24, kernel_size=3, stride=2, padding=1, bias=False)
+            self.conv1 = self.conv1.cuda()
 
-        # for param in self.conv1.parameters():
-        #     param.requires_grad = True
+            self.conv1.weight.requires_grad_(True)
+
+            # for param in self.conv1.parameters():
+            #     param.requires_grad = True
 
 
-        print("=== Conv1 parameters specifically ===")
-        for name, param in self.conv1.named_parameters():
-            print(f"conv1.{name}: {param.shape}, requires_grad: {param.requires_grad}")
+            print("=== Conv1 parameters specifically ===")
+            for name, param in self.conv1.named_parameters():
+                print(f"conv1.{name}: {param.shape}, requires_grad: {param.requires_grad}")
 
-        # Initialize conv weights properly
-        nn.init.kaiming_normal_(self.conv1.weight, mode='fan_out', nonlinearity='relu')
-        # self.conv2 = nn.Conv2d(3, base_layer, kernel_size=3, stride=2, padding=1, bias=False)
-        # self.conv3 = nn.Conv2d(3, base_layer, kernel_size=3, stride=2, padding=1, bias=False)
+            # Initialize conv weights properly
+            nn.init.kaiming_normal_(self.conv1.weight, mode='fan_out', nonlinearity='relu')
+            # self.conv2 = nn.Conv2d(3, base_layer, kernel_size=3, stride=2, padding=1, bias=False)
+            # self.conv3 = nn.Conv2d(3, base_layer, kernel_size=3, stride=2, padding=1, bias=False)
 
-        # Debug: Print all parameters
-        # print("=== All module parameters ===")
-        # for name, param in self.named_parameters():
-        #     print(f"{name}: {param.shape}, requires_grad: {param.requires_grad}, device: {param.device}")
-        assert self.conv1.weight.requires_grad, "Conv1 weight should require gradients!"
+            # Debug: Print all parameters
+            # print("=== All module parameters ===")
+            # for name, param in self.named_parameters():
+            #     print(f"{name}: {param.shape}, requires_grad: {param.requires_grad}, device: {param.device}")
+            assert self.conv1.weight.requires_grad, "Conv1 weight should require gradients!"
 
-        # print("=== Conv1 parameters specifically ===")
-        # for name, param in self.conv1.named_parameters():
-        #     print(f"conv1.{name}: {param.shape}, requires_grad: {param.requires_grad}, device: {param.device}")
+            # print("=== Conv1 parameters specifically ===")
+            # for name, param in self.conv1.named_parameters():
+            #     print(f"conv1.{name}: {param.shape}, requires_grad: {param.requires_grad}, device: {param.device}")
 
         self._active_adapter = adapter_name
         self.update_layer(
@@ -827,7 +846,7 @@ class Linear(nn.Module, LoraLayer):
             self.lora_B[adapter].weight.data = weight_B.to(dtype)
 
         return output_tensor
-    
+
 
 
     def analyze_lora_parameters(model):
@@ -855,7 +874,7 @@ class Linear(nn.Module, LoraLayer):
             elif "base_layer" in name or "weight" in name or "bias" in name:
                 base_params += param_count
                 component = "Base"
-            else:
+                    else:
                 other_params += param_count
                 component = "Other"
                 
@@ -983,18 +1002,36 @@ class Linear(nn.Module, LoraLayer):
                     # import ipdb;
                     # ipdb.set_trace(context=10)
 
-                    # c1_op = self.conv1(spatial_4d)
-                    c1_op = self.conv1(spatial_4d.to(self.conv1.weight.device))
-                    print("---___---___---____First conv layer output shape", c1_op.shape)
-                    ################ Reverse the operation ###########
-                    conv1_trainable_after = sum(p.numel() for p in self.conv1.parameters() if p.requires_grad)
-                    print(f"AFTER forward - Conv1 trainable params: {conv1_trainable_after:,}")
+                    if self.use_conv_lora_moe and hasattr(self, 'lora_moe_experts'):
+                        # MoE Conv processing
+                        gates, moe_loss = self.lora_moe_gating(spatial_4d)
+                        dispatcher = SparseDispatcher(self.num_experts, gates)
+                        expert_inputs = dispatcher.dispatch(spatial_4d)
+                        expert_outputs = []
+                        
+                        for i in range(self.num_experts):
+                            if len(expert_inputs[i]) == 0:
+                                continue
+                            upsample_ratio = self.upsample_ratios[i]
+                            cur_res = expert_inputs[i]
+                            if upsample_ratio != 1:
+                                cur_res = F.interpolate(cur_res, scale_factor=upsample_ratio, mode="bicubic")
+                            cur_res = self.lora_moe_experts[i](cur_res)
+                            if upsample_ratio != 1:
+                                cur_res = F.interpolate(cur_res, size=(int(target_size), int(target_size)), mode="bicubic")
+                            expert_outputs.append(cur_res)
 
-                    # if conv1_trainable_after > conv1_trainable_before:
-                    #     print("✅ Conv1 became trainable after forward pass!")
-                    conv_flat = c1_op.permute(0, 2, 3, 1).reshape(B_new, -1, C_new)
+                        # Combine expert outputs
+                        temp_lora_res = dispatcher.combine(expert_outputs, multiply_by_gates=self.multiply_by_gates)
+                        conv_result = spatial_4d + temp_lora_res
+                    else:
+                        # Single conv processing (fallback)
+                        conv_result = self.conv1(spatial_4d)
 
-                    if conv_flat.shape[1] != L_orig:  # 576 != 577
+                    # Convert back to sequence format
+                    conv_flat = conv_result.permute(0, 2, 3, 1).reshape(B_new, -1, C_new)
+                    
+                    if conv_flat.shape[1] != L_orig:
                         conv_upsampled = F.interpolate(
                             conv_flat.permute(0, 2, 1),  # [2, 8, 576]
                             size=L_orig,  # Interpolate back to 577
@@ -1350,7 +1387,7 @@ class Embedding(nn.Module, LoraLayer):
                 if active_adapter not in self.lora_variant:  # vanilla LoRA
                     embedding_A = self.lora_embedding_A[active_adapter].T
                     embedding_B = self.lora_embedding_B[active_adapter].T
-                    scaling = self.scaling[active_adapter]
+                scaling = self.scaling[active_adapter]
                     after_A = self._embed(x, embedding_A)
                     result = result + (after_A @ embedding_B) * scaling
                 else:
@@ -1507,7 +1544,7 @@ class _ConvNd(nn.Module, LoraLayer):
                     # Note that safe_merge will be slower than the normal merge
                     # because of the copy operation.
                     orig_weight = base_layer.weight.data.clone()
-                    if active_adapter not in self.lora_variant:  # vanilla LoRA
+                if active_adapter not in self.lora_variant:  # vanilla LoRA
                         delta_weight = self.get_delta_weight(active_adapter)
                         orig_weight += delta_weight.to(orig_dtype)
                     else:
@@ -1563,7 +1600,7 @@ class _ConvNd(nn.Module, LoraLayer):
                     orig_dtype = weight.dtype
                     delta_weight = self.get_delta_weight(active_adapter)
                     weight.data -= delta_weight.to(orig_dtype)
-                else:
+                    else:
                     unmerged = self.lora_variant[active_adapter].unmerge(self, active_adapter, weight)
                     weight.data = unmerged
 
@@ -1599,7 +1636,7 @@ class _ConvNd(nn.Module, LoraLayer):
             output_tensor = (weight_B.squeeze(3).squeeze(2) @ weight_A.squeeze(3).squeeze(2)).unsqueeze(2).unsqueeze(
                 3
             ) * self.scaling[adapter]
-        else:
+                    else:
             output_tensor = self.conv_fn(weight_A.transpose(0, 1), weight_B)
 
             if self.get_base_layer().groups > 1:
@@ -2521,6 +2558,13 @@ def dispatch_default(
                 "Setting fan_in_fan_out to False."
             )
             kwargs["fan_in_fan_out"] = lora_config.fan_in_fan_out = False
+        
+        # Add MoE parameters if they exist in the config
+        if hasattr(lora_config, 'conv_lora_expert_num'):
+            kwargs['conv_lora_expert_num'] = lora_config.conv_lora_expert_num
+        if hasattr(lora_config, 'use_conv_lora_moe'):
+            kwargs['use_conv_lora_moe'] = lora_config.use_conv_lora_moe
+            
         kwargs.update(lora_config.loftq_config)
         new_module = Linear(target, adapter_name, **kwargs)
         # print("_____----____---_____--_____-", new_module, "_wghoiwehgioewhio__-")
@@ -2534,3 +2578,145 @@ def dispatch_default(
         new_module = Linear(target, adapter_name, is_target_conv_1d_layer=True, **kwargs)
 
     return new_module
+
+
+class MoEGate(nn.Module):
+    def __init__(self, d, M=4, K=1, noisy_gating=True):
+        """Constructor
+        Args:
+            d: input channel dimensionality.
+            M: the number of experts.
+            K: the number of chosen experts for each forward pass.
+        """
+        super(MoEGate, self).__init__()
+        self.M = M
+        self.k = K
+        self.gap = nn.AdaptiveAvgPool2d((1, 1))  # global average pooling
+
+        self.noisy_gating = noisy_gating
+
+        self.w_gate = nn.Parameter(torch.zeros(d, M), requires_grad=True)
+        self.w_noise = nn.Parameter(torch.zeros(d, M), requires_grad=True)
+
+        self.softplus = nn.Softplus()
+        self.softmax = nn.Softmax(1)
+        self.register_buffer("mean", torch.tensor([0.0]))
+        self.register_buffer("std", torch.tensor([1.0]))
+        assert self.k <= self.M
+
+    def forward(self, feats, loss_coef=1e-2, noise_epsilon=1e-2):
+        batch_size = feats.shape[0]
+
+        feats_S = self.gap(feats).view(batch_size, -1)
+
+        clean_logits = feats_S @ self.w_gate
+        if self.noisy_gating and self.training:
+            raw_noise_stddev = feats_S @ self.w_noise
+            noise_stddev = self.softplus(raw_noise_stddev) + noise_epsilon
+            noisy_logits = clean_logits + (torch.randn_like(clean_logits) * noise_stddev)
+            logits = noisy_logits
+        else:
+            logits = clean_logits
+
+        top_logits, top_indices = logits.topk(min(self.k + 1, self.M), dim=1)
+        top_k_logits = top_logits[:, : self.k]
+        top_k_indices = top_indices[:, : self.k]
+        top_k_gates = self.softmax(top_k_logits)
+        zeros = torch.zeros_like(logits, requires_grad=True).float()
+        gates = zeros.scatter(1, top_k_indices, top_k_gates).to(logits.dtype)
+
+        if self.noisy_gating and self.k < self.M and self.training:
+            load = (self._prob_in_top_k(clean_logits, noisy_logits, noise_stddev, top_logits)).sum(0)
+        else:
+            load = self._gates_to_load(gates)
+
+        importance = gates.sum(0)
+        loss = self.cv_squared(importance) + self.cv_squared(load)
+        loss *= loss_coef
+
+        return gates, loss
+
+    def _gates_to_load(self, gates):
+        """Compute the true load per expert, given the gates."""
+        return (gates > 0).sum(0)
+
+    def cv_squared(self, x):
+        """The squared coefficient of variation of a sample."""
+        eps = 1e-10
+
+        if x.shape[0] == 1:
+            return torch.tensor([0], device=x.device, dtype=x.dtype)
+        return x.float().var() / (x.float().mean() ** 2 + eps)
+
+    def _prob_in_top_k(self, clean_values, noisy_values, noise_stddev, noisy_top_values):
+        """Helper function to NoisyTopKGating."""
+        batch = clean_values.size(0)
+        m = noisy_top_values.size(1)
+        top_values_flat = noisy_top_values.flatten()
+
+        threshold_positions_if_in = torch.arange(batch, device=clean_values.device) * m + self.k
+        threshold_if_in = torch.unsqueeze(torch.gather(top_values_flat, 0, threshold_positions_if_in), 1)
+        is_in = torch.gt(noisy_values, threshold_if_in)
+        threshold_positions_if_out = threshold_positions_if_in - 1
+        threshold_if_out = torch.unsqueeze(torch.gather(top_values_flat, 0, threshold_positions_if_out), 1)
+        
+        normal = Normal(self.mean, self.std)
+        prob_if_in = normal.cdf((clean_values - threshold_if_in) / noise_stddev)
+        prob_if_out = normal.cdf((clean_values - threshold_if_out) / noise_stddev)
+        prob = torch.where(is_in, prob_if_in, prob_if_out)
+        return prob
+
+
+class SparseDispatcher(object):
+    """Helper for implementing a mixture of experts."""
+
+    def __init__(self, num_experts, gates):
+        """Create a SparseDispatcher."""
+        self._gates = gates
+        self._num_experts = num_experts
+        # sort experts
+        sorted_experts, index_sorted_experts = torch.nonzero(gates).sort(0)
+        # drop indices
+        _, self._expert_index = sorted_experts.split(1, dim=1)
+        # get according batch index for each expert
+        self._batch_index = torch.nonzero(gates)[index_sorted_experts[:, 1], 0]
+        # calculate num samples that each expert gets
+        self._part_sizes = (gates > 0).sum(0).tolist()
+        # expand gates to match with self._batch_index
+        gates_exp = gates[self._batch_index.flatten()]
+        self._nonzero_gates = torch.gather(gates_exp, 1, self._expert_index)
+
+    def dispatch(self, inp):
+        """Create one input Tensor for each expert."""
+        # assigns samples to experts whose gate is nonzero
+        # expand according to batch index so we can just split by _part_sizes
+        inp_exp = inp[self._batch_index].squeeze(1)  # [bs * num_of chosen experts, dim]
+        return torch.split(inp_exp, self._part_sizes, dim=0)
+
+    def combine(self, expert_out, multiply_by_gates=True):
+        """Sum together the expert output, weighted by the gates."""
+        # apply exp to expert outputs, so we are not longer in log space
+        stitched = torch.cat(expert_out, 0).exp()
+
+        if multiply_by_gates:
+            stitched = stitched.mul(self._nonzero_gates.unsqueeze(-1).unsqueeze(-1))
+        
+        zeros = torch.zeros(
+            self._gates.size(0),
+            expert_out[-1].size()[1],
+            expert_out[-1].size()[2],
+            expert_out[-1].size()[3],
+            requires_grad=True,
+            device=stitched.device,
+        )
+        # combine samples that have been processed by the same k experts
+        combined = zeros.index_add(0, self._batch_index, stitched.float())
+        # add eps to all zero values in order to avoid nans when going back to log space
+        combined[combined == 0] = np.finfo(float).eps
+        # back to log space
+        return combined.log()
+
+    def expert_to_gates(self):
+        """Gate values corresponding to the examples in the per-expert `Tensor`s."""
+        # split nonzero gates for each expert
+        return torch.split(self._nonzero_gates, self._part_sizes, dim=0)
