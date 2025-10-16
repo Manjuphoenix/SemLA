@@ -848,6 +848,45 @@ class Linear(nn.Module, LoraLayer):
         return output_tensor
 
 
+    def check_moe_trainability(self):
+        """Check if MoE components are trainable"""
+        if not (self.use_conv_lora_moe and hasattr(self, 'lora_moe_experts')):
+            print("MoE not enabled or not initialized")
+            return
+        
+        print("=== MOE TRAINABILITY CHECK ===")
+        
+        # Check gating network
+        print("MoE Gating Network:")
+        gating_trainable = 0
+        gating_total = 0
+        for name, param in self.lora_moe_gating.named_parameters():
+            gating_total += param.numel()
+            if param.requires_grad:
+                gating_trainable += param.numel()
+            print(f"  {name}: {param.shape}, requires_grad: {param.requires_grad}")
+        print(f"  Gating - Trainable: {gating_trainable}/{gating_total} ({gating_trainable/gating_total*100:.1f}%)")
+        
+        # Check expert networks
+        print("MoE Expert Networks:")
+        expert_trainable = 0
+        expert_total = 0
+        for i, expert in enumerate(self.lora_moe_experts):
+            print(f"  Expert {i}:")
+            expert_trainable_i = 0
+            expert_total_i = 0
+            for name, param in expert.named_parameters():
+                expert_total_i += param.numel()
+                if param.requires_grad:
+                    expert_trainable_i += param.numel()
+                print(f"    {name}: {param.shape}, requires_grad: {param.requires_grad}")
+            expert_trainable += expert_trainable_i
+            expert_total += expert_total_i
+            print(f"    Expert {i} - Trainable: {expert_trainable_i}/{expert_total_i} ({expert_trainable_i/expert_total_i*100:.1f}%)")
+        
+        print(f"  All Experts - Trainable: {expert_trainable}/{expert_total} ({expert_trainable/expert_total*100:.1f}%)")
+        print(f"  Total MoE - Trainable: {gating_trainable + expert_trainable}/{gating_total + expert_total} ({(gating_trainable + expert_trainable)/(gating_total + expert_total)*100:.1f}%)")
+
 
     def analyze_lora_parameters(model):
         """Analyze parameters for LoRA model specifically"""
@@ -968,7 +1007,7 @@ class Linear(nn.Module, LoraLayer):
                     # result = result + lora_B(lora_A(dropout(x))) * scaling
 
                     ######### Broken process for modifications......
-                    print("Shape of x before lora a", x.shape)
+                    #print("Shape of x before lora a", x.shape)
                     la = lora_A(dropout(x))         # la : L, B, D
                     # print(la.shape, "before first permute")     #torch.Size([577, 2, 8])
                     L_orig, B_orig, C_orig = la.shape
@@ -997,17 +1036,22 @@ class Linear(nn.Module, LoraLayer):
                     B_new, spatial_tokens, C_new = pooled.shape  # B_new=2, spatial_tokens=576, C_new=8
 
                     spatial_4d = pooled.reshape(B_new, target_size, target_size, C_new).permute(0, 3, 1, 2)
-                    print("Spatial 4D shape:", spatial_4d.shape)  # Should be [2, 8, 24, 24]
+                    #print("Spatial 4D shape:", spatial_4d.shape)  # Should be [2, 8, 24, 24]
                     # print(HEIYIO)
                     #print(f"Conv1 training mode: {self.conv1.training}")
                     # import ipdb;
                     # ipdb.set_trace(context=10)
 
                     if self.use_conv_lora_moe and hasattr(self, 'lora_moe_experts'):
+                        # Check trainability (only print once per forward pass)
+                        if not hasattr(self, '_moe_checked'):
+                            self.check_moe_trainability()
+                            self._moe_checked = True
+                        
                         # MoE Conv processing
                         gates, moe_loss = self.lora_moe_gating(spatial_4d)
                         #print("Gates shape:", gates.shape) # (batch, num_experts)
-                        #print("MoE loss:", moe_loss)
+                        # print("MoE loss when shape of x before lora a is", x.shape, "is", moe_loss)
                         #import time
                         #time.sleep(60)
 
@@ -2673,7 +2717,6 @@ class MoEGate(nn.Module):
         prob_if_out = normal.cdf((clean_values - threshold_if_out) / noise_stddev)
         prob = torch.where(is_in, prob_if_in, prob_if_out)
         return prob
-
 
 class SparseDispatcher(object):
     """Helper for implementing a mixture of experts."""
