@@ -1,0 +1,8 @@
+# MoE Configuration for SemLA
+top_k: 5
+combination_type: cat
+epochs: 100
+learning_rate: 0.001
+batch_size: 32
+validation_split: 0.2
+hidden_dim: 512

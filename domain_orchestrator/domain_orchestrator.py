@@ -123,7 +123,7 @@ class DomainOrchestrator:
         self.observer: DomainObserver = DomainObserver()
 
         print("Adding source domains ...")
-        
+
         self._source_domains: Mapping[str, Domain] = self._add_domains(
             domains, split="train"
         )
@@ -133,6 +133,11 @@ class DomainOrchestrator:
         self._target_domains: Mapping[str, Domain] = self._add_domains(
             domains, split="val"
         )
+
+        # self._target_domains: Mapping[str, Domain] = self._add_tgt_domains(
+        #     domains, split="val"
+        # )
+        
         print("Target domains added. \n\n")
 
         self._setup_observer()
@@ -196,7 +201,13 @@ class DomainOrchestrator:
 
         source_domains = {}
 
+
+        # FOR multiple domains only..............
         for source_domain_name in source_domain_names:
+
+            # print("-------------------", source_domain_name, "---------------")
+            # print(HOHIOU)
+            
             args, evaluator, data_loader = get_domain_args(source_domain_name, split=split)
             source_domains.update(
                 {
@@ -209,7 +220,81 @@ class DomainOrchestrator:
                 }
             )
 
+
+        # FOR Single domain.....
+        
+        # source_domain_name = "coco-stuff"
+
+        # source_domain_name = source_domain_names
+        
+        # args, evaluator, data_loader = get_domain_args(source_domain_name, split=split)
+        # source_domains.update(
+        #     {
+        #         source_domain_name: self._add_domain(
+        #             domain_name=source_domain_name,
+        #             args=args,
+        #             evaluator=evaluator,
+        #             data_loader=data_loader,
+        #         )
+        #     }
+        # )
+
         return source_domains
+
+
+
+    def _add_tgt_domains(
+        self,
+        target_domain_names: list[str],
+        split: Literal["train", "val"],
+    ) -> Dict[str, Domain]:
+        """
+        Add the specified domains to the orchestrator.
+        """
+
+        target_domains = {}
+
+
+        # FOR multiple domains only..............
+        for source_domain_name in source_domain_names:
+
+            print("-------------------", source_domain_name, "---------------")
+            print(HOHIOU)
+            
+            args, evaluator, data_loader = get_domain_args(source_domain_name, split=split)
+            source_domains.update(
+                {
+                    source_domain_name: self._add_domain(
+                        domain_name=source_domain_name,
+                        args=args,
+                        evaluator=evaluator,
+                        data_loader=data_loader,
+                    )
+                }
+            )
+
+
+        # FOR Single domain.....
+        
+        # source_domain_name = "coco-stuff"
+
+        # target_domain_name = "IE_Segmentation"
+        # target_domain_name = "msrs_rgb"
+        target_domain_name = target_domain_names
+        
+        args, evaluator, data_loader = get_domain_args(target_domain_name, split=split)
+        target_domains.update(
+            {
+                target_domain_name: self._add_domain(
+                    domain_name=target_domain_name,
+                    args=args,
+                    evaluator=evaluator,
+                    data_loader=data_loader,
+                )
+            }
+        )
+
+        return target_domains
 
 
     def _add_domain(
@@ -308,7 +393,8 @@ class DomainOrchestrator:
         remove_target_adapter: bool,
         mode: Literal["uniform", "centroid"],
         target_embedding=None,
-        softmax_temperature: int | None = 0.05,
+        # softmax_temperature: int | None = 0.05,
+        softmax_temperature: int = 0.05,
         top_k: int = 5,  # number of domains to merge
         combination_type: str = "cat",
         similarity_measure: Callable[
@@ -439,6 +525,8 @@ class DomainOrchestrator:
     def benchmark_zeroshot(self, target_domains: list[str]) -> dict[str, float]:
         results = {}
 
+
+        # For multiple target domains.....................
         for current_target_domain_name in target_domains:
             current_target_domain = self._target_domains[current_target_domain_name]
 
@@ -466,7 +554,42 @@ class DomainOrchestrator:
                 }  # res can look different from dataset to dataset
             )
 
+
+        # for current_target_domain_name in target_domains:
+
+
+        # print("=-----------------", self._target_domains.keys(), "_---____---____---___---")
+        # print(HOIHOI)
+        
+        # current_target_domain_name = target_domains
+        # current_target_domain = self._target_domains[current_target_domain_name]
+
+        # args: Namespace = custom_domain_args(
+        #     config_file=current_target_domain.args.config_file,
+        #     output_path="output/benchmark_zeroshot/",
+        #     num_gpus=1,
+        #     model_path="models/model_final.pth",
+        # )
+
+        # self.current_model = load_catseg_model(
+        #     args, model_path=args.model_path
+        # )
+
+        # result_dict = self._benchmark_on_current_target_domain(name="zeroshot", target_domain=current_target_domain)
+
+        # print(f"Zeroshot results for {current_target_domain.name}:")
+        # print(result_dict)
+
+        # result = self._get_result_from_dict(result_dict)
+
+        # results.update(
+        #     {
+        #         current_target_domain.name: result
+        #     }  # res can look different from dataset to dataset
+        # )
+
         return results
+        
     
     def benchmark_oracle(self, target_domains: list[str]) -> dict[str, float]:
         results = {}
@@ -518,7 +641,8 @@ class DomainOrchestrator:
         self,
         target_domains: list[str],
         remove_target_adapter: bool = False,
-        softmax_temperature: int | None = 0.05,
+        # softmax_temperature: int | None = 0.05,
+        softmax_temperature: int = 0.05,
         top_k: int = 5,  # number of domains to merge
         combination_type: str = "cat",
         similarity_measure: Callable[
@@ -604,6 +728,83 @@ class DomainOrchestrator:
 
             if not isinstance(evaluator, SemSegEvaluator):
                 evaluator._working_dir.cleanup()
+
+
+        ####################################################################
+
+        # for current_target_domain_name in target_domains:
+            
+        # current_target_domain_name = target_domains
+        
+        # current_target_domain = self._target_domains[current_target_domain_name]
+
+        # self._set_current_target_domain(
+        #     current_target_domain,
+        # )
+
+        # data_loader = current_target_domain.data_loader
+        # evaluator = current_target_domain.evaluator
+
+        # model = self.current_model
+
+        # # These lines are adopted from
+        # # https://github.com/facebookresearch/detectron2/blob/2a420edb307c9bdf640f036d3b196bed474b8593/detectron2/evaluation/evaluator.py#L103
+
+        # evaluator.reset()
+
+        # with ExitStack() as stack:
+        #     if isinstance(model, nn.Module):
+        #         stack.enter_context(inference_context(model))
+        #     stack.enter_context(torch.no_grad())
+
+        #     for _, inputs in enumerate(data_loader):
+
+        #         input_path = inputs[0]["file_name"]
+
+        #         print(f"Predicting image: {input_path}")
+
+        #         current_embedding = self.embedding_manager.embed_image(input_path)
+
+        #         weight_dict, merged_adpater_name = self._merge(
+        #             target_domain=current_target_domain,
+        #             remove_target_adapter=remove_target_adapter,
+        #             mode="centroid", 
+        #             target_embedding=current_embedding,
+        #             softmax_temperature=softmax_temperature,
+        #             top_k=top_k,
+        #             combination_type=combination_type,
+        #             similarity_measure=similarity_measure,
+        #             sort_descending=sort_descending,
+        #         )
+
+        #         for domain, weight in weight_dict.items():
+        #             weights.setdefault(domain, []).append(weight)
+
+        #         model = self.current_model
+
+        #         outputs = model(inputs)
+
+        #         if torch.cuda.is_available():
+        #             torch.cuda.synchronize()
+
+        #         if isinstance(evaluator, SemSegEvaluator):
+        #             _ = evaluator.process(inputs, outputs)
+        #         else:
+        #             _ = evaluator.process_image(inputs, outputs)
+
+        #         self.current_model.delete_adapter(merged_adpater_name)
+
+        # print(f"Benchmarking on domain '{current_target_domain.name}' ...")
+        # result_dict = evaluator.evaluate()
+        # result = self._get_result_from_dict(result_dict)
+        # print(f"Result for domain '{current_target_domain.name}': {result}\n")
+
+        # results.update({current_target_domain.name: result})
+
+        # if not isinstance(evaluator, SemSegEvaluator):
+        #     evaluator._working_dir.cleanup()
+
+        #####################################
 
         total = time.time() - t0
         print(f"Experiment took {total} seconds to complete!")
