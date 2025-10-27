@@ -61,6 +61,9 @@ import detectron2.utils.comm as comm
 from detectron2.utils.logger import setup_logger
 from detectron2.utils.file_io import PathManager
 
+import contextlib
+from torch.cuda.amp import autocast, GradScaler
+
 # Add the root of the project to the python path to find cat_seg
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))  # Adds current directory
 
@@ -607,6 +610,61 @@ class ResizedCityscapesSemSegEvaluator(CityscapesSemSegEvaluator):
         return ret
 
 
+def _sum_moe_aux_loss(model):
+    moe = 0.0
+    found = False
+    for m in model.modules():
+        if hasattr(m, "moe_aux_loss") and m.moe_aux_loss is not None:
+            moe = moe + m.moe_aux_loss
+            found = True
+    return (moe, found)
+
+class MoESimpleTrainer(SimpleTrainer):
+    def run_step(self):
+        #self._trainer.iter = self.iter
+        assert self.model.training, "[MoESimpleTrainer] model was changed to eval mode!"
+        data = next(self._data_loader_iter)
+        loss_dict = self.model(data)
+        losses = sum(loss_dict.values())
+
+        moe_loss, has_moe = _sum_moe_aux_loss(self.model)
+        if has_moe:
+            moe_weight = getattr(self.model, "moe_weight", None)
+            if moe_weight is None:
+                moe_weight = 0.01  # fallback if not set elsewhere
+            print("moe weight being used is", moe_weight)
+            losses = losses + moe_weight * moe_loss
+
+        self.optimizer.zero_grad()
+        losses.backward()
+        self.optimizer.step()
+
+class MoEAMPTrainer(SimpleTrainer):
+    def __init__(self, model, data_loader, optimizer, grad_scaler=None):
+        super().__init__(model, data_loader, optimizer)
+        self.grad_scaler = grad_scaler or GradScaler()
+
+    def run_step(self):
+        # self._trainer.iter = self.iter
+        assert self.model.training, "[MoEAMPTrainer] model was changed to eval mode!"
+        data = next(self._data_loader_iter)
+        with autocast():
+            loss_dict = self.model(data)
+            losses = sum(loss_dict.values())
+
+            moe_loss, has_moe = _sum_moe_aux_loss(self.model)
+            if has_moe:
+                moe_weight = getattr(self.model, "moe_weight", None)
+                if moe_weight is None:
+                    moe_weight = 0.01
+                losses = losses + moe_weight * moe_loss
+
+        self.optimizer.zero_grad()
+        self.grad_scaler.scale(losses).backward()
+        self.grad_scaler.step(self.optimizer)
+        self.grad_scaler.update()
+
+
 class Trainer(DefaultTrainer):
     """
     Extension of the Trainer class adapted to DETR.
@@ -620,10 +678,13 @@ class Trainer(DefaultTrainer):
         self.optimizer = self.build_optimizer(cfg, self.model)
         self.data_loader = self.build_train_loader(cfg)
 
+        # Optionally expose a weight from cfg; attach to model once.
+        setattr(self.model, "moe_weight", getattr(cfg.MODEL.LORA, "MOE_WEIGHT", 0.1))
+
         self.model = create_ddp_model(
             self.model, broadcast_buffers=False, find_unused_parameters=True
         )
-        self._trainer = (AMPTrainer if cfg.SOLVER.AMP.ENABLED else SimpleTrainer)(
+        self._trainer = (MoEAMPTrainer if cfg.SOLVER.AMP.ENABLED else MoESimpleTrainer)(
             self.model, self.data_loader, self.optimizer
         )
 

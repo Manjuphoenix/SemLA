@@ -95,13 +95,9 @@ class LoraLayer(BaseTunerLayer):
         self.scaling = {}
         self.lora_dropout = nn.ModuleDict({})
         self.lora_A = nn.ModuleDict({})
-        self.lora_A1 = nn.ModuleDict({})
         self.lora_B = nn.ModuleDict({})
-        self.lora_B1 = nn.ModuleDict({})
         # For Embedding layer
-        self.lora_embedding_A1 = nn.ParameterDict({})
         self.lora_embedding_A = nn.ParameterDict({})
-        self.lora_embedding_B1 = nn.ParameterDict({})
         self.lora_embedding_B = nn.ParameterDict({})
         # Mark the weight as unmerged
         self._disable_adapters = False
@@ -220,11 +216,6 @@ class LoraLayer(BaseTunerLayer):
         lora_variant = self.resolve_lora_variant(
             use_dora=use_dora, use_qalora=use_qalora, qalora_group_size=qalora_group_size
         )
-
-
-        # print("_---____---____---____--___", lora_variant)  #None
-        # print(OIGHEIOHGWIOEH)
-
         if lora_variant is not None:
             self.lora_variant[adapter_name] = lora_variant
 
@@ -236,27 +227,11 @@ class LoraLayer(BaseTunerLayer):
             lora_dropout_layer = nn.Identity()
 
         self.lora_dropout.update(nn.ModuleDict({adapter_name: lora_dropout_layer}))
-##########################################################################################################################
+
         # Actual trainable parameters
-        self.lora_A1[adapter_name] = nn.Linear(self.in_features, int(r/2), bias=False)      # Scale down
-        self.lora_A[adapter_name] = nn.Linear(int(r/2), r, bias=False)      # Scale down
-        self.lora_B1[adapter_name] = nn.Linear(r, int(r/2), bias=lora_bias)     # Scale up
-        self.lora_B[adapter_name] = nn.Linear(int(r/2), self.out_features, bias=lora_bias)     # Scale up
+        self.lora_A[adapter_name] = nn.Linear(self.in_features, r, bias=False)
+        self.lora_B[adapter_name] = nn.Linear(r, self.out_features, bias=lora_bias)
         self.lora_bias[adapter_name] = lora_bias
-
-        # print("_-____---____---____---", self.lora_A, self.lora_B, self.lora_bias, "OGIHEOIHGOIH")
-        """
-        ModuleDict(
-        (acdc-fog): Linear(in_features=1024, out_features=8, bias=False)
-        ) ModuleDict(
-        (acdc-fog): Linear(in_features=8, out_features=1024, bias=False)
-        ) {'acdc-fog': False}
-        """
-        # print(EOHGOIWHFOIEWH)
-
-
-        # print("_--____---_____--_", use_rslora, use_dora, use_qalora)       # All Three False....
-        # print(OWJWEJGIJWE)
 
         if use_rslora:
             self.scaling[adapter_name] = lora_alpha / math.sqrt(r)
@@ -264,9 +239,6 @@ class LoraLayer(BaseTunerLayer):
             self.scaling[adapter_name] = lora_alpha / r
 
         self.use_dora[adapter_name] = use_dora
-
-        # print("_----____---___---___----___", init_lora_weights)        #True
-        # print(HOIEHFWOIH)
 
         # for inits that require access to the base weight, use gather_param_ctx so that the weight is gathered when using DeepSpeed
         if isinstance(init_lora_weights, str) and init_lora_weights.startswith("pissa"):
@@ -287,22 +259,14 @@ class LoraLayer(BaseTunerLayer):
             with gather_params_ctx(self.get_base_layer().weight):
                 self.orthogonal_init(adapter_name)
         elif init_lora_weights:
-            # This will be called..................
             self.reset_lora_parameters(adapter_name, init_lora_weights)
         # call this before init of the lora variants
         self._move_adapter_to_device_of_base_layer(adapter_name)
 
-
-        # print("_-____----___---___", self.lora_variant)         # {}
-        # print(HOHWGOIH)
         if adapter_name in self.lora_variant:
             self.lora_variant[adapter_name].init(self, **kwargs)
 
-        # print("_gweghherherje5jjdejerjr_-----____----____--____", self.set_adapter(self.active_adapters))      #None
-        # print(OIWHEgoiHWEIR)
         self.set_adapter(self.active_adapters)
-
-    #########################################
 
     def reset_lora_parameters(self, adapter_name, init_lora_weights):
         if init_lora_weights is False:
@@ -320,20 +284,6 @@ class LoraLayer(BaseTunerLayer):
             nn.init.zeros_(self.lora_B[adapter_name].weight)
             if self.lora_bias[adapter_name]:
                 nn.init.zeros_(self.lora_B[adapter_name].bias)
-        
-        # if adapter_name in self.lora_A1.keys():
-        #     if init_lora_weights is True:
-        #         # initialize A the same way as the default for nn.Linear and B to zero
-        #         # https://github.com/microsoft/LoRA/blob/a0a92e0f26c067cf94747bdbf1ce73793fa44d19/loralib/layers.py#L124
-        #         nn.init.kaiming_uniform_(self.lora_A1[adapter_name].weight, a=math.sqrt(5))
-        #     elif init_lora_weights.lower() == "gaussian":
-        #         nn.init.normal_(self.lora_A1[adapter_name].weight, std=1 / self.r[adapter_name])
-        #     else:
-        #         raise ValueError(f"Unknown initialization {init_lora_weights=}")
-        #     nn.init.zeros_(self.lora_B1[adapter_name].weight)
-        #     if self.lora_bias[adapter_name]:
-        #         nn.init.zeros_(self.lora_B1[adapter_name].bias)
-
         if adapter_name in self.lora_embedding_A.keys():
             # Initialize A to zeros and B the same way as the default for nn.Embedding, see:
             # https://github.com/microsoft/LoRA/blob/4c0333854cb905966f8cc4e9a74068c1e507c7b7/loralib/layers.py#L59-L60
@@ -342,15 +292,6 @@ class LoraLayer(BaseTunerLayer):
             if self.lora_bias[adapter_name]:
                 # embeddings are not supported at the moment, but still adding this for consistency
                 nn.init.zeros_(self.lora_embedding_B[adapter_name].bias)
-
-        # if adapter_name in self.lora_embedding_A1.keys():
-        #     # Initialize A to zeros and B the same way as the default for nn.Embedding, see:
-        #     # https://github.com/microsoft/LoRA/blob/4c0333854cb905966f8cc4e9a74068c1e507c7b7/loralib/layers.py#L59-L60
-        #     nn.init.zeros_(self.lora_embedding_A1[adapter_name])
-        #     nn.init.normal_(self.lora_embedding_B1[adapter_name])
-        #     if self.lora_bias[adapter_name]:
-        #         # embeddings are not supported at the moment, but still adding this for consistency
-        #         nn.init.zeros_(self.lora_embedding_B1[adapter_name].bias)
 
     def olora_init(self, adapter_name):
         base_layer = self.get_base_layer()
@@ -679,37 +620,6 @@ class Linear(nn.Module, LoraLayer):
         super().__init__()
         LoraLayer.__init__(self, base_layer, **kwargs)
         self.fan_in_fan_out = fan_in_fan_out
-        self.adapt_name = adapter_name
-
-        ############### conv layer for LoRA ###########
-        # self.conv1 = nn.Conv2d(8, 24, kernel_size=3, stride=2, padding=1, bias=False)
-        # self.conv1 = self.conv1.cuda()
-
-        # self.conv1.weight.requires_grad_(True)
-
-        # for param in self.conv1.parameters():
-        #     param.requires_grad = True
-
-
-        # print("=== Conv1 parameters specifically ===")
-        # for name, param in self.conv1.named_parameters():
-        #     print(f"conv1.{name}: {param.shape}, requires_grad: {param.requires_grad}")
-            
-
-        # Initialize conv weights properly
-        # nn.init.kaiming_normal_(self.conv1.weight, mode='fan_out', nonlinearity='relu')
-        # self.conv2 = nn.Conv2d(3, base_layer, kernel_size=3, stride=2, padding=1, bias=False)
-        # self.conv3 = nn.Conv2d(3, base_layer, kernel_size=3, stride=2, padding=1, bias=False)
-
-        # Debug: Print all parameters
-        # print("=== All module parameters ===")
-        # for name, param in self.named_parameters():
-        #     print(f"{name}: {param.shape}, requires_grad: {param.requires_grad}, device: {param.device}")
-        # assert self.conv1.weight.requires_grad, "Conv1 weight should require gradients!"
-
-        # print("=== Conv1 parameters specifically ===")
-        # for name, param in self.conv1.named_parameters():
-        #     print(f"conv1.{name}: {param.shape}, requires_grad: {param.requires_grad}, device: {param.device}")
 
         self._active_adapter = adapter_name
         self.update_layer(
@@ -725,7 +635,6 @@ class Linear(nn.Module, LoraLayer):
         self.is_target_conv_1d_layer = is_target_conv_1d_layer
 
     def resolve_lora_variant(self, *, use_dora: bool, **kwargs) -> Optional[LoraVariant]:
-        # print(RESOLVELORAVARIANT)
         if not use_dora:
             return None
 
@@ -734,7 +643,7 @@ class Linear(nn.Module, LoraLayer):
         return DoraLinearVariant()
 
     def merge(self, safe_merge: bool = False, adapter_names: Optional[list[str]] = None) -> None:
-        print(MERGE)
+        # print(MERGE)
         """
         Merge the active adapter weights into the base weights
 
@@ -802,7 +711,7 @@ class Linear(nn.Module, LoraLayer):
                 self.merged_adapters.append(active_adapter)
 
     def unmerge(self) -> None:
-        print(UNMERGE)
+        # print(UNMERGE)
         """
         This method unmerges all merged adapter layers from the base weights.
         """
@@ -825,7 +734,7 @@ class Linear(nn.Module, LoraLayer):
                     self.get_base_layer().bias.data -= self.lora_B[active_adapter].bias * self.scaling[active_adapter]
 
     def get_delta_weight(self, adapter) -> torch.Tensor:
-        print(GETDELTAWEIGHT)
+        # print(GETDELTAWEIGHT)
         """
         Compute the delta weight for the given adapter.
 
@@ -859,7 +768,6 @@ class Linear(nn.Module, LoraLayer):
 
         return output_tensor
     
-
 
     def analyze_lora_parameters(model):
         """Analyze parameters for LoRA model specifically"""
@@ -907,6 +815,50 @@ class Linear(nn.Module, LoraLayer):
 
 
     def forward(self, x: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
+        print("FORWARD METHOD CALLED")
+        import time
+        #time.sleep(30)
+
+        self._check_forward_args(x, *args, **kwargs)
+        adapter_names = kwargs.pop("adapter_names", None)
+
+        if self.disable_adapters:
+            if self.merged:
+                self.unmerge()
+            result = self.base_layer(x, *args, **kwargs)
+        elif adapter_names is not None:
+            result = self._mixed_batch_forward(x, *args, adapter_names=adapter_names, **kwargs)
+        elif self.merged:
+            result = self.base_layer(x, *args, **kwargs)
+        else:
+            result = self.base_layer(x, *args, **kwargs)
+            torch_result_dtype = result.dtype
+
+            lora_A_keys = self.lora_A.keys()
+            for active_adapter in self.active_adapters:
+                if active_adapter not in lora_A_keys:
+                    continue
+
+                lora_A = self.lora_A[active_adapter]
+                lora_B = self.lora_B[active_adapter]
+                dropout = self.lora_dropout[active_adapter]
+                scaling = self.scaling[active_adapter]
+                x = self._cast_input_dtype(x, lora_A.weight.dtype)
+                if active_adapter not in self.lora_variant:  # vanilla LoRA
+                    result = result + lora_B(lora_A(dropout(x))) * scaling
+                else:
+                    result = self.lora_variant[active_adapter].forward(
+                        self,
+                        active_adapter=active_adapter,
+                        x=x,
+                        result=result,
+                    )
+
+            result = result.to(torch_result_dtype)
+
+        return result
+
+    def forward__(self, x: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
 
         """
         self.base_layer will be nothing but Linear layer (Linear(in_features=1024, out_features=4096, bias=True))
@@ -2602,6 +2554,7 @@ def dispatch_default(
         
         # Import and use your custom Linear class with convolutional processing
         from .layer_conv_lora import Linear as ConvLoRALinear
+        # don't change to ConvLoRALinear, during inference it's causing issues
         new_module = ConvLoRALinear(target, adapter_name, **kwargs)
         
     elif isinstance(target_base_layer, Conv1D):

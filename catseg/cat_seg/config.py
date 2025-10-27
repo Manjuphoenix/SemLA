@@ -29,6 +29,7 @@ def add_cat_seg_config(cfg):
     # optimizer
     cfg.SOLVER.OPTIMIZER = "ADAMW"
     cfg.SOLVER.BACKBONE_MULTIPLIER = 0.1
+    cfg.SOLVER.AMP.ENABLED = False
 
     # mask_former model config
     cfg.MODEL.MASK_FORMER = CN()
@@ -772,3 +773,4 @@ def add_lora_config(
     cfg.MODEL.LORA.BIAS = "none"
     cfg.MODEL.LORA.CONV_LORA_EXPERT_NUM = 4  # Number of experts for MoE
     cfg.MODEL.LORA.USE_CONV_LORA_MOE = True  # Set to True to enable MoE
+    cfg.MODEL.LORA.MOE_WEIGHT = 0.25

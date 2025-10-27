@@ -663,9 +663,12 @@ class Linear(nn.Module, LoraLayer):
             self.lora_moe_experts = nn.ModuleList([])
             self.upsample_ratios = list(range(1, conv_lora_expert_num + 1))
             for upsample_ratio in self.upsample_ratios:
-                expert = nn.Conv2d(in_channels=r, out_channels=r, kernel_size=3, stride=1, padding=1, bias=True)
-                expert.bias.data.zero_()
-                self.lora_moe_experts.append(nn.Sequential(expert, nn.GELU()))
+                #expert = nn.Conv2d(in_channels=r, out_channels=r, kernel_size=3, stride=1, padding=1, bias=True)
+                #expert.bias.data.zero_()
+                #for param in expert.parameters():
+                #    param.requires_grad = False
+                #self.lora_moe_experts.append(nn.Sequential(expert, nn.GELU()))
+                self.lora_moe_experts.append(nn.GELU())
             self.num_experts = conv_lora_expert_num
             self.multiply_by_gates = False
 
@@ -711,6 +714,8 @@ class Linear(nn.Module, LoraLayer):
             lora_bias=lora_bias,
         )
         self.is_target_conv_1d_layer = is_target_conv_1d_layer
+
+        self.moe_aux_loss = None
 
     def resolve_lora_variant(self, *, use_dora: bool, **kwargs) -> Optional[LoraVariant]:
         # print(RESOLVELORAVARIANT)
@@ -947,6 +952,7 @@ class Linear(nn.Module, LoraLayer):
         # print(f"BEFORE forward - Conv1 trainable params: {conv1_trainable_before:,}")
 
         # self.analyze_lora_parameters(self)
+        self.moe_aux_loss = None
         self._check_forward_args(x, *args, **kwargs)
         adapter_names = kwargs.pop("adapter_names", None)
         count = 1
@@ -1045,11 +1051,12 @@ class Linear(nn.Module, LoraLayer):
                     if self.use_conv_lora_moe and hasattr(self, 'lora_moe_experts'):
                         # Check trainability (only print once per forward pass)
                         if not hasattr(self, '_moe_checked'):
-                            self.check_moe_trainability()
+                            # self.check_moe_trainability()
                             self._moe_checked = True
                         
                         # MoE Conv processing
                         gates, moe_loss = self.lora_moe_gating(spatial_4d)
+                        self.moe_aux_loss = moe_loss if self.moe_aux_loss is None else (self.moe_aux_loss + moe_loss)
                         #print("Gates shape:", gates.shape) # (batch, num_experts)
                         # print("MoE loss when shape of x before lora a is", x.shape, "is", moe_loss)
                         #import time
@@ -1061,7 +1068,7 @@ class Linear(nn.Module, LoraLayer):
                         
                         for i in range(self.num_experts):
                             if len(expert_inputs[i]) == 0:
-                                print("No expert input for expert", i, ".... skipping")
+                                #print("No expert input for expert", i, ".... skipping")
                                 continue
                             upsample_ratio = self.upsample_ratios[i]
                             cur_res = expert_inputs[i]

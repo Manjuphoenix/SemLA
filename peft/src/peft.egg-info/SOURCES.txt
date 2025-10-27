@@ -93,7 +93,9 @@ src/peft/tuners/lora/hqq.py
 src/peft/tuners/lora/inc.py
 src/peft/tuners/lora/layer.py
 src/peft/tuners/lora/layer_conv_lora.py
+src/peft/tuners/lora/layer_og.py
 src/peft/tuners/lora/model.py
+src/peft/tuners/lora/model_og.py
 src/peft/tuners/lora/torchao.py
 src/peft/tuners/lora/tp_layer.py
 src/peft/tuners/lora/variants.py

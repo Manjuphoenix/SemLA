@@ -62,7 +62,7 @@ def get_domain_args(
         "bdd_conv",
     }
 
-    CS_DOMAIN_CHECK = {"normal", "rain"}
+    CS_DOMAIN_CHECK = {"normal", "rain", "normal_moe_conv", "normal_moe_conv2d", "normal_moe_conv2dfreeze"}
     CS_SUB_DOMAIN_CHECK = ["25mm", "50mm", "75mm", "100mm", "200mm"]
 
     ACDC_DOMAIN_CHECK = {"fog", "night", "snow", "rain"}
@@ -94,10 +94,11 @@ def get_domain_args(
             sub_domain in MUSES_SUB_DOMAIN_CHECK
         ), f"Given illumination '{sub_domain}' is not supported for MUSES"
     elif dataset == "acdc":
-        assert (
-            domain in ACDC_DOMAIN_CHECK
-        ), f"Domain '{domain}' is not supported for ACDC"
-        assert sub_domain == "", "Volume is not supported in ACDC"
+        pass
+        #assert (
+        #    domain in ACDC_DOMAIN_CHECK
+        #), f"Domain '{domain}' is not supported for ACDC"
+        #assert sub_domain == "", "Volume is not supported in ACDC"
 
     assert mode in MODE_CHECK, "Mode '{mode}' not supported"
 
@@ -105,12 +106,15 @@ def get_domain_args(
         "cs": {
             "rain": f"configs/cityscapes/rain/{sub_domain}/{mode}-{domain}-{sub_domain}.yaml",
             "normal": f"configs/cityscapes/normal/{mode}-{domain}.yaml",
+            "normal_moe_conv": f"configs/cityscapes/normal/{mode}-normal.yaml",
+            "normal_moe_conv2d": f"configs/cityscapes/normal/{mode}-normal.yaml",
+            "normal_moe_conv2dfreeze": f"configs/cityscapes/normal/{mode}-normal.yaml",
         },
         "cs_conv": {
             "rain": f"configs/cityscapes/rain/{sub_domain}/{mode}-{domain}-{sub_domain}.yaml",
             "normal": f"configs/cityscapes/normal/{mode}-{domain}.yaml",
         },
-        "acdc": {f"{domain}": f"configs/acdc/{domain}/{mode}-{domain}-acdc.yaml"},
+        "acdc": {f"{domain}": f"configs/acdc/{domain.split('_')[0]}/{mode}-{domain.split('_')[0]}-acdc.yaml"},
         "acdc_conv": {f"{domain}": f"configs/acdc/{domain}/{mode}-{domain}-acdc.yaml"},
         "muses": {
             f"{domain}": f"configs/muses/{domain}/muses-{domain}-{sub_domain}.yaml"
@@ -130,7 +134,7 @@ def get_domain_args(
         'nyu': 'configs/nyu/nyu.yaml',
         'coconutL': 'configs/coconutL/coconutL.yaml',
         "cocostuff": "configs/coco/coco-stuff.yaml",
-        "IE_Segmentation": "configs/indraeye/rgb/indraeye-rgb.yaml",
+        "indraeye": "configs/indraeye/rgb/indraeye-rgb.yaml",
         # "indraeye-rgb": "configs/indraeye/rgb/indraeye-rgb.yaml",
         "indraeyed": "configs/indraeye/rgb/indraeye-rgb.yaml",
         "indraeyen": "configs/indraeye/rgb/indraeye-rgb.yaml",
@@ -161,11 +165,11 @@ def get_domain_args(
             },
         },
         "acdc": {
-            "train": f"{DETECTRON2_DATASET_PATH}acdc/rgb_anon/{domain}/train/",
-            "val": f"{DETECTRON2_DATASET_PATH}acdc/rgb_anon/{domain}/val/",
+            "train": f"{DETECTRON2_DATASET_PATH}acdc/rgb_anon/{domain.split('_')[0]}/train/",
+            "val": f"{DETECTRON2_DATASET_PATH}acdc/rgb_anon/{domain.split('_')[0]}/val/",
         },
         "acdc_conv": {
-            "train": f"{DETECTRON2_DATASET_PATH}acdc/rgb_anon/{domain}/train/",
+            "train": f"{DETECTRON2_DATASET_PATH}acdc/rgb_anon/{domain.split('_')[0]}/train/",
             "val": f"{DETECTRON2_DATASET_PATH}acdc/rgb_anon/{domain}/val/",
         },
         "muses": {
@@ -212,7 +216,7 @@ def get_domain_args(
             "train": f"{DETECTRON2_DATASET_PATH}coconut-l/train2017/",
             "val": f"{DETECTRON2_DATASET_PATH}coconut-l/val2017",
         },
-        "IE_Segmentation": {
+        "indraeye": {
             "train": f"{DETECTRON2_DATASET_PATH}IE_Segmentation/IE_eo_ir_split/eo/train/",
             "val": f"{DETECTRON2_DATASET_PATH}IE_Segmentation/IE_eo_ir_split/eo/val/",
         },
@@ -271,10 +275,12 @@ def get_domain_args(
     # print(OIJ)
 
     # Constructing the return values
-    if domain == "" and sub_domain == "":
+    print("dataset is ----->", dataset)
+    print("domain is ----->", domain)
+    print("sub_domain is ----->", sub_domain)
+    if (domain == "" and sub_domain == "") or (dataset == "indraeye") or (domain == "moe_conv") or (domain in ["moe_conv2dfreeze", "moe_conv2d"] and dataset in ["idd", "bdd"]):
         config_file = configs[dataset]
     else:
-
         # print("-___--______", dataset, domain, "_--___-----___-")
         config_file = configs[dataset][domain]
         # config_file = configs[dataset]
@@ -357,12 +363,23 @@ def get_domain_args(
         return args
     else:
         from catseg.train_net import Trainer, setup
-
+        dataset_name = f"{domain_name}_sem_seg_{split}"
+        if dataset == "indraeye":
+            dataset_name = f"IE_Segmentation_sem_seg_{split}"
+        if "moe_conv" in domain_name:
+            first_part, second_part = domain_name.split('-')[0], domain_name.split('-')[1]
+            dataset_name = f"{first_part}-{second_part.split('_')[0]}_sem_seg_{split}"
+            print("dataset_name is ----->", dataset_name)
+        if dataset == "bdd" or dataset == "idd":
+            dataset_name = f"{dataset}_sem_seg_{split}"
+        #print("DATASET is ----->", dataset_name)
+        #import time
+        #time.sleep(60)
         data_loader = Trainer.build_test_loader(
-            setup(args), f"{domain_name}_sem_seg_{split}"
+            setup(args), dataset_name
         )
 
-        evaluator = Trainer.build_evaluator(setup(args), f"{domain_name}_sem_seg_{split}")
+        evaluator = Trainer.build_evaluator(setup(args), dataset_name)
 
         return args, evaluator, data_loader
 
