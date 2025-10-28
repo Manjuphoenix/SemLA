@@ -5,6 +5,7 @@ import yaml
 import scipy
 import scipy.spatial
 from typing import Dict, List, Callable, Any, Optional, Tuple
+import tqdm
 
 from domain_orchestrator.domain_orchestrator import DomainOrchestrator
 

@@ -183,7 +183,7 @@ class DomainOrchestrator:
                 load_catseg_model(target_domain.args), lora_path, source_domain.name
             )
         else:
-            self.current_model.load_adapter(lora_path, source_domain.name)
+            self.current_model.load_adapter(lora_path, source_domain.name, sc_factor=0.0)
 
     def _add_domains(
         self,
@@ -360,6 +360,8 @@ class DomainOrchestrator:
                 similarity_measure=similarity_measure,
                 sort_descending=sort_descending
             )
+
+            # import ipdb; ipdb.set_trace(context=10)
 
             k_closest_names = list(similarity_mapping.keys())[: top_k]
             k_closest_similarities = list(similarity_mapping.values())[: top_k]

@@ -107,6 +107,7 @@ class PeftModel(PushToHubMixin, torch.nn.Module):
         model: PreTrainedModel,
         peft_config: PeftConfig,
         adapter_name: str = "default",
+        sc_factor: float = 0.0,
         autocast_adapter_dtype: bool = True,
         low_cpu_mem_usage: bool = False,
     ) -> None:
@@ -116,6 +117,7 @@ class PeftModel(PushToHubMixin, torch.nn.Module):
         super().__init__()
         self.active_adapter = adapter_name
         self.peft_type = peft_config.peft_type
+        self.sc_factor = sc_factor
         # These args are special PEFT arguments that users can pass. They need to be removed before passing them to
         # forward.
         self.special_peft_forward_args = {"adapter_names"}
@@ -138,7 +140,8 @@ class PeftModel(PushToHubMixin, torch.nn.Module):
             #   peft.tuners.lora.model.LoraModel  =>  cls
 
             with ctx():
-                self.base_model = cls(model, {adapter_name: peft_config}, adapter_name)
+                # import ipdb; ipdb.set_trace()
+                self.base_model = cls(model, {adapter_name: peft_config}, adapter_name, sc_factor)
 
         if hasattr(self.base_model, "_cast_adapter_dtype"):
             self.base_model._cast_adapter_dtype(
@@ -390,6 +393,7 @@ class PeftModel(PushToHubMixin, torch.nn.Module):
         model: torch.nn.Module,
         model_id: Union[str, os.PathLike],
         adapter_name: str = "default",
+        sc_factor: float = 0.0,
         is_trainable: bool = False,
         config: Optional[PeftConfig] = None,
         autocast_adapter_dtype: bool = True,
@@ -568,6 +572,7 @@ class PeftModel(PushToHubMixin, torch.nn.Module):
         load_result = model.load_adapter(
             model_id,
             adapter_name,
+            sc_factor,
             is_trainable=is_trainable,
             autocast_adapter_dtype=autocast_adapter_dtype,
             low_cpu_mem_usage=low_cpu_mem_usage,
@@ -985,7 +990,7 @@ class PeftModel(PushToHubMixin, torch.nn.Module):
         # return self.base_model if self.active_peft_config.is_prompt_learning else self.base_model.model
         return self.base_model if self.active_peft_config.is_prompt_learning else self.base_model.model
 
-    def add_adapter(self, adapter_name: str, peft_config: PeftConfig, low_cpu_mem_usage: bool = False) -> None:
+    def add_adapter(self, adapter_name: str, sc_factor: float, peft_config: PeftConfig, low_cpu_mem_usage: bool = False) -> None:
         """
         Add an adapter to the model based on the passed configuration.
 
@@ -1047,7 +1052,7 @@ class PeftModel(PushToHubMixin, torch.nn.Module):
             else:
                 self.peft_config[adapter_name] = peft_config
                 self.base_model.inject_adapter(
-                    self.base_model.model, adapter_name, low_cpu_mem_usage=low_cpu_mem_usage
+                    self.base_model.model, adapter_name, sc_factor, low_cpu_mem_usage=low_cpu_mem_usage
                 )
         except Exception:  # something went wrong, roll back
             if adapter_name in self.peft_config:
@@ -1284,6 +1289,7 @@ class PeftModel(PushToHubMixin, torch.nn.Module):
         self,
         model_id: Union[str, os.PathLike],
         adapter_name: str,
+        sc_factor: float,
         is_trainable: bool = False,
         torch_device: Optional[str] = None,
         autocast_adapter_dtype: bool = True,
@@ -1350,7 +1356,7 @@ class PeftModel(PushToHubMixin, torch.nn.Module):
             )
             self._check_new_adapter_config(peft_config, is_trainable=is_trainable)
             peft_config.inference_mode = not is_trainable
-            self.add_adapter(adapter_name, peft_config, low_cpu_mem_usage=low_cpu_mem_usage)
+            self.add_adapter(adapter_name, sc_factor, peft_config, low_cpu_mem_usage=low_cpu_mem_usage)
 
         adapters_weights = load_peft_weights(
             model_id, device=torch_device, key_mapping=key_mapping, **hf_hub_download_kwargs

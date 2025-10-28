@@ -14,6 +14,7 @@ from detectron2.structures import ImageList
 from detectron2.utils.memory import _ignore_torch_cuda_oom
 
 
+
 ############### SAM2 ###############
 # from sam2.build_sam import build_sam2
 # from sam2.sam2_image_predictor import SAM2ImagePredictor

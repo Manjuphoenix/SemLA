@@ -79,7 +79,8 @@ from cat_seg import (
 import cv2
 import peft
 import json
-import wandb 
+import wandb
+import tqdm
 
 
 def set_random_seed(seed=0, deterministic=True):
@@ -952,7 +953,7 @@ def main(args):
         # print(HEY)
         # trainer.model.print_trainable_parameters()
 
-    output = trainer.train()
+    output = tqdm(trainer.train())
     trainer.model.print_trainable_parameters()
 
     # Save only the LoRA weights to LoRA DB

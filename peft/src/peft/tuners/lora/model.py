@@ -180,12 +180,13 @@ class LoraModel(BaseTuner):
         target,
         target_name,
         parent,
+        sc_factor,
         current_key,
         *,
         parameter_name: Optional[str] = None,
     ) -> None:
         
-
+        # import ipdb; ipdb.set_trace()
         # print("=--------------=", current_key, "************")  # Individual keys that are taken from the config file
         # print(OIHEGOIHE)
 
@@ -227,6 +228,7 @@ class LoraModel(BaseTuner):
         kwargs = {
             "r": r,
             "lora_alpha": alpha,
+            "scale_factor": sc_factor,
             "lora_dropout": lora_config.lora_dropout,
             "fan_in_fan_out": lora_config.fan_in_fan_out,
             "init_lora_weights": lora_config.init_lora_weights,
@@ -269,6 +271,7 @@ class LoraModel(BaseTuner):
             target.update_layer(
                 adapter_name,
                 r,
+                sc_factor,
                 lora_alpha=alpha,
                 lora_dropout=lora_config.lora_dropout,
                 init_lora_weights=lora_config.init_lora_weights,
@@ -323,6 +326,7 @@ class LoraModel(BaseTuner):
 
     def _mark_only_adapters_as_trainable(self, model: nn.Module) -> None:
         for n, p in model.named_parameters():
+            # import ipdb; ipdb.set_trace()
             # print('n---------',n)
             # print('p---------',p)
             # print('p---------',self.prefix)
@@ -915,6 +919,27 @@ class LoraModel(BaseTuner):
                 Should be used with [`ties`, `ties_svd`, `dare_ties`, `dare_ties_svd`]
         """
 
+
+        n_good_adapt = 0
+        # conv_n_good_adapt = 0
+        # if "conv" in adapter_name: 
+        #     for w in weights:
+        #         if w >= 0.2:
+        #             n_good_adapt += 1
+        #     sf = len(weights)/n_good_adapt
+        # else:
+        #     for w in weights:
+        #         if w >= 0.2:
+        #             n_good_adapt += 1
+        #     sf = len(weights)/n_good_adapt
+        for w in weights:
+                if w >= 0.2:
+                    n_good_adapt += 1
+        sc_factor = len(weights)/n_good_adapt
+
+
+        # import ipdb; ipdb.set_trace()
+
         if adapter_name in list(self.peft_config.keys()):
             return
 
@@ -933,7 +958,9 @@ class LoraModel(BaseTuner):
             rank_pattern={},
         )
 
-        self.inject_adapter(self.model, adapter_name)
+
+        # import ipdb; ipdb.set_trace()
+        self.inject_adapter(self.model, adapter_name, sc_factor)
 
         # Do we really need that?
         _freeze_adapter(self.model, adapter_name)
@@ -1016,8 +1043,11 @@ class LoraModel(BaseTuner):
         for key in key_list:
             
             # import ipdb; ipdb.set_trace()
+            
             if "conv" in adapter_name:
                 _, target, _ = _get_submodules(self.model, key)
+
+                # import ipdb; ipdb.set_trace()
                 if isinstance(target, LoraLayer):
                     target_lora_A = target.lora_A[adapter_name].weight
                     target_lora_B = target.lora_B[adapter_name].weight
@@ -1033,12 +1063,18 @@ class LoraModel(BaseTuner):
                     
                     if combination_type == "cat":
                         loras_A, loras_B, conv1 = [], [], []
+                        thresh = 0.23
                         for adapter, weight in zip(adapters, weights):
-                            current_adapter_lora_A = target.lora_A[adapter].weight
-                            current_adapter_lora_B = target.lora_B[adapter].weight
-                            current_adapter_conv1 = target.conv1[adapter].weight
+                            if weight >= thresh:
+                                current_adapter_lora_A = target.lora_A[adapter].weight
+                                current_adapter_lora_B = target.lora_B[adapter].weight
+                                current_adapter_conv1 = target.conv1[adapter].weight
+                            else:
+                                current_adapter_lora_A = torch.zeros(target.lora_A[adapter].weight.shape).to(target.lora_A[adapter].weight.device)
+                                current_adapter_lora_B = torch.zeros(target.lora_B[adapter].weight.shape).to(target.lora_B[adapter].weight.device)
+                                current_adapter_conv1 = torch.zeros(target.conv1[adapter].weight.shape).to(target.conv1[adapter].weight.device)
                             loras_A.append(current_adapter_lora_A.data * weight * target.scaling[adapter])
-                            loras_B.append(current_adapter_lora_B.data)
+                            loras_B.append(current_adapter_lora_B.data * weight * target.scaling[adapter])
                             conv1.append(current_adapter_conv1.data * weight * target.scaling[adapter])
                             # conv1 = target.conv1.weight
 
@@ -1051,7 +1087,8 @@ class LoraModel(BaseTuner):
                         target_lora_B.data[:, : loras_B.shape[1]] = loras_B
                         target_conv1.data[:, :, :, :] = conv1
 
-
+                        del current_adapter_lora_A, current_adapter_lora_B, loras_A, loras_B
+                        # import ipdb; ipdb.set_trace()
 
 
                     elif combination_type in [
@@ -1095,9 +1132,15 @@ class LoraModel(BaseTuner):
                     
                     if combination_type == "cat":
                         loras_A, loras_B = [], []
+                        thresh = 0.22
                         for adapter, weight in zip(adapters, weights):
-                            current_adapter_lora_A = target.lora_A[adapter].weight
-                            current_adapter_lora_B = target.lora_B[adapter].weight
+                            if weight >= thresh:
+                                current_adapter_lora_A = target.lora_A[adapter].weight
+                                current_adapter_lora_B = target.lora_B[adapter].weight
+                            else:
+                                current_adapter_lora_A = torch.zeros(target.lora_A[adapter].weight.shape).to(target.lora_A[adapter].weight.device)
+                                current_adapter_lora_B = torch.zeros(target.lora_B[adapter].weight.shape).to(target.lora_B[adapter].weight.device)
+
                             loras_A.append(current_adapter_lora_A.data * weight * target.scaling[adapter])
                             loras_B.append(current_adapter_lora_B.data)
 
@@ -1108,7 +1151,11 @@ class LoraModel(BaseTuner):
                         target_lora_A.data[: loras_A.shape[0], :] = loras_A
                         target_lora_B.data[:, : loras_B.shape[1]] = loras_B
 
-                    # import ipdb; ipdb.set_trace()
+                        del current_adapter_lora_A, current_adapter_lora_B, loras_A, loras_B
+
+                        # import ipdb; ipdb.set_trace()
+
+                        # import ipdb; ipdb.set_trace()
 
                     elif combination_type in [
                         "svd",

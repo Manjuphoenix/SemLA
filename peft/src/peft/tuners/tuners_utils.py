@@ -184,6 +184,7 @@ class BaseTuner(nn.Module, ABC):
         model,
         peft_config: Union[PeftConfig, dict[str, PeftConfig]],
         adapter_name: str,
+        sc_factor: float,
         low_cpu_mem_usage: bool = False,
         state_dict: Optional[dict[str, torch.Tensor]] = None,
     ) -> None:
@@ -192,6 +193,7 @@ class BaseTuner(nn.Module, ABC):
         self.model = model
         self.targeted_module_names: list[str] = []
         self.targeted_parameter_names: list[str] = []
+        self.sc_factor = sc_factor
 
         # For advanced developers, if you want to attach multiple adapters to your
         # model, just add a `peft_config` dict attribute to your model.
@@ -214,7 +216,8 @@ class BaseTuner(nn.Module, ABC):
         # print(OHOHI)
         self._pre_injection_hook(self.model, self.peft_config[adapter_name], adapter_name)
         if peft_config != PeftType.XLORA or peft_config[adapter_name] != PeftType.XLORA:
-            self.inject_adapter(self.model, adapter_name, low_cpu_mem_usage=low_cpu_mem_usage, state_dict=state_dict)
+            # import ipdb; ipdb.set_trace()
+            self.inject_adapter(self.model, adapter_name, self.sc_factor, low_cpu_mem_usage=low_cpu_mem_usage, state_dict=state_dict)
 
         # Copy the peft_config in the injected model.
         self.model.peft_config = self.peft_config
@@ -456,6 +459,7 @@ class BaseTuner(nn.Module, ABC):
         self,
         model: nn.Module,
         adapter_name: str,
+        sc_factor: float,
         autocast_adapter_dtype: bool = True,
         low_cpu_mem_usage: bool = False,
         state_dict: Optional[dict[str, torch.Tensor]] = None,
@@ -618,9 +622,10 @@ class BaseTuner(nn.Module, ABC):
                     # print(HEY)
                     self._check_target_module_compatiblity(peft_config, model, target_name)     # This returns none
                     ctx = init_empty_weights if low_cpu_mem_usage else nullcontext
+                    
                     with ctx():
                         self._create_and_replace(
-                            peft_config, adapter_name, target, target_name, parent, current_key=key
+                            peft_config, adapter_name, target, target_name, parent, sc_factor, current_key=key,
                         )
             else:
                 # use the state_dict to match modules instead

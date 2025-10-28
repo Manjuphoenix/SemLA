@@ -131,7 +131,7 @@ def get_domain_args(
         'coconutL': 'configs/coconutL/coconutL.yaml',
         "cocostuff": "configs/coco/coco-stuff.yaml",
         "IE_Segmentation": "configs/indraeye/rgb/indraeye-rgb.yaml",
-        "indraeye": "configs/indraeye/rgb/indraeye-rgb.yaml",
+        # "indraeye-rgb": "configs/indraeye/rgb/indraeye-rgb.yaml",
         "indraeyed": "configs/indraeye/rgb/indraeye-rgb.yaml",
         "indraeyen": "configs/indraeye/rgb/indraeye-rgb.yaml",
         
@@ -197,8 +197,8 @@ def get_domain_args(
             "val": f"{DETECTRON2_DATASET_PATH}ADEChallengeData2016/images/validation/",
         },
         "idd": {
-            "train": f"{DETECTRON2_DATASET_PATH}IDD_Segmentation/leftImg8bit/train/",
-            "val": f"{DETECTRON2_DATASET_PATH}IDD_Segmentation/leftImg8bit/val/",
+            "train": f"{DETECTRON2_DATASET_PATH}idd/IDD_Segmentation/leftImg8bit/train/",
+            "val": f"{DETECTRON2_DATASET_PATH}idd/IDD_Segmentation/leftImg8bit/val/",
         },
         "pc59": {
             "train": f"{DETECTRON2_DATASET_PATH}pascal_ctx_d2/images/training",
@@ -228,10 +228,6 @@ def get_domain_args(
             "train": f"{DETECTRON2_DATASET_PATH}IE_daynight/IE_eo_ir_split/eo/rgbday/train/",
             "val": f"{DETECTRON2_DATASET_PATH}IE_daynight/IE_eo_ir_split/eo/rgbday/val/",
         },
-        "indraeye": {
-            "train": f"{DETECTRON2_DATASET_PATH}indraeye/eo/train/",
-            "val": f"{DETECTRON2_DATASET_PATH}indraeye/eo/test/",
-        },
         "indraeyen": {
             "train": f"{DETECTRON2_DATASET_PATH}IE_daynight/IE_eo_ir_split/eo/rgbnight/train/",
             "val": f"{DETECTRON2_DATASET_PATH}IE_daynight/IE_eo_ir_split/eo/rgbnight/val/",
@@ -257,8 +253,8 @@ def get_domain_args(
             "val": f"{DETECTRON2_DATASET_PATH}OpenEarthMap/val/",
         },
         "idd_conv": {
-            "train": f"{DETECTRON2_DATASET_PATH}IDD_Segmentation/leftImg8bit/train/",
-            "val": f"{DETECTRON2_DATASET_PATH}IDD_Segmentation/leftImg8bit/val/",
+            "train": f"{DETECTRON2_DATASET_PATH}idd/IDD_Segmentation/leftImg8bit/train/",
+            "val": f"{DETECTRON2_DATASET_PATH}idd/IDD_Segmentation/leftImg8bit/val/",
         },
     }
 

@@ -208,6 +208,7 @@ class LoraLayer(BaseTunerLayer):
         self,
         adapter_name,
         r,
+        sc_factor,
         lora_alpha,
         lora_dropout,
         init_lora_weights,
@@ -288,7 +289,8 @@ class LoraLayer(BaseTunerLayer):
         if use_rslora:
             self.scaling[adapter_name] = lora_alpha / math.sqrt(r)
         else:
-            self.scaling[adapter_name] = lora_alpha / r
+            # self.scaling[adapter_name] = (lora_alpha * 2) / math.sqrt(r)
+            self.scaling[adapter_name] = sc_factor
 
         self.use_dora[adapter_name] = use_dora
 
@@ -720,6 +722,7 @@ class Linear(nn.Module, LoraLayer):
         self.update_layer(
             adapter_name,
             r,
+            sc_factor=lora_alpha/r,
             lora_alpha=lora_alpha,
             lora_dropout=lora_dropout,
             init_lora_weights=init_lora_weights,
@@ -921,7 +924,7 @@ class Linear(nn.Module, LoraLayer):
         # import ipdb
         # ipdb.set_trace(context=10)
         # self.analyze_lora_parameters()
-        conv1_trainable_before = sum(p.numel() for p in self.conv1.parameters() if p.requires_grad)
+        # conv1_trainable_before = sum(p.numel() for p in self.conv1.parameters() if p.requires_grad)
         # print(f"BEFORE forward - Conv1 trainable params: {conv1_trainable_before:,}")
 
         # self.analyze_lora_parameters(self)
@@ -1022,13 +1025,13 @@ class Linear(nn.Module, LoraLayer):
                             target_spatial_size  # Pool to 576
                         ).permute(0, 2, 1)  # [2, 576, 8]
 
-                        print("Pooled shape:", pooled.shape)
+                        # print("Pooled shape:", pooled.shape)
                         B_new, spatial_tokens, C_new = pooled.shape  # B_new=2, spatial_tokens=576, C_new=8
 
                         spatial_4d = pooled.reshape(B_new, target_size, target_size, C_new).permute(0, 3, 1, 2)
-                        print("Spatial 4D shape:", spatial_4d.shape)  # Should be [2, 8, 24, 24]
+                        # print("Spatial 4D shape:", spatial_4d.shape)  # Should be [2, 8, 24, 24]
                         # print(HEIYIO)
-                        print(f"Conv1 training mode: {conv1.training}")
+                        # print(f"Conv1 training mode: {conv1.training}")
                         # import ipdb;
                         # ipdb.set_trace(context=10)
 
@@ -1038,13 +1041,13 @@ class Linear(nn.Module, LoraLayer):
                         c1_op = conv1(spatial_4d.to(conv1.weight.device))
                         # m = nn.SiLU()
                         # c1_op = m(c1_op)
-                        print("---___---___---____First conv layer output shape", c1_op.shape)
+                        # print("---___---___---____First conv layer output shape", c1_op.shape)
                         ################ Reverse the operation ###########
-                        conv1_trainable_after = sum(p.numel() for p in conv1.parameters() if p.requires_grad)
+                        # conv1_trainable_after = sum(p.numel() for p in conv1.parameters() if p.requires_grad)
                         # print(f"AFTER forward - Conv1 trainable params: {conv1_trainable_after:,}")
 
-                        if conv1_trainable_after >= conv1_trainable_before:
-                            print("✅ Conv1 became trainable after forward pass!")
+                        # if conv1_trainable_after >= conv1_trainable_before:
+                        #     print("✅ Conv1 became trainable after forward pass!")
                         
                         # import ipdb; ipdb.set_trace(context=10)
                         conv_flat = c1_op.permute(0, 2, 3, 1).reshape(B_new, -1, C_new)
@@ -1131,6 +1134,7 @@ class Linear(nn.Module, LoraLayer):
                         lb = lora_B(la)
                         lb = lb.permute(1,0,2)
                         # import ipdb; ipdb.set_trace(context=10)
+                    
                     #########################################################################################
 
                     # print("-----___lora b shape", lb.shape)       # torch.Size([577, 2, 1024/4096]) - for clip vision
@@ -1143,7 +1147,9 @@ class Linear(nn.Module, LoraLayer):
                     #     lb = lora_B(la)
                     #     scaled_lora = lb * scaling
 
+                    # import ipdb; ipdb.set_trace(context=10)
                     result = result + scaled_lora
+                    # import ipdb; ipdb.set_trace(context=10)
 
                 else:
                     result = self.lora_variant[active_adapter].forward(
