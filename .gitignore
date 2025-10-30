@@ -1,0 +1,15 @@
+__pycache__/
+.venv/
+wandb/
+catseg/loradb/
+catseg/output/
+catseg/models/
+results/
+outputs/
+.ipynb_checkpoints/
+catseg/loradb_20.85_indraeye/
+catseg/loradb_run1_wrong/
+catseg/old_ani_semla_loradb/
+catseg/IE_Seg_pred_lora/
+catseg/assets/
+
