@@ -1,0 +1,29 @@
+# - acdc-rain
+# - acdc-fog
+# - acdc-snow
+# - acdc-night
+- indraeye
+# - acdc_conv-night
+# - acdc_conv-rain
+# - acdc_conv-fog
+# - acdc_conv-snow
+# - IE_Segmentation
+# - muses-clear-day
+# - muses-clear-night
+# - muses-rain-day
+# - muses-rain-night
+# - muses-fog-day
+# - muses-fog-night
+# - muses-snow-night
+# - muses-snow-day
+# - cs-normal
+# - cs_conv-normal
+# - bdd
+# - bdd_conv
+# - mv
+# - a150
+# - idd
+# - pc59
+# - coconutL
+# - nyu
+- idd_conv
