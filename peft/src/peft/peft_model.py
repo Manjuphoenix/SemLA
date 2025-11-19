@@ -110,6 +110,9 @@ class PeftModel(PushToHubMixin, torch.nn.Module):
         autocast_adapter_dtype: bool = True,
         low_cpu_mem_usage: bool = False,
     ) -> None:
+        # print("---_____---___---___---____---", adapter_name, peft_config.peft_type, ")00)))))0000)))))00)))0000))))")
+        # print("---_____---___---___---____---", self.prepare_model_for_gradient_checkpointing(model), )
+        # print(HOIHOI)
         super().__init__()
         self.active_adapter = adapter_name
         self.peft_type = peft_config.peft_type
@@ -125,7 +128,15 @@ class PeftModel(PushToHubMixin, torch.nn.Module):
         else:
             self._peft_config = None
             cls = PEFT_TYPE_TO_TUNER_MAPPING[peft_config.peft_type]
+
             ctx = init_empty_weights if low_cpu_mem_usage else nullcontext
+
+
+            # print("_-_____---____---____---_____", ctx, "_-____--_____--__")
+            # print("_-_____---____---____---_____", cls, "_-____--_____--__")
+            # print(WGOIHWEOJ)
+            #   peft.tuners.lora.model.LoraModel  =>  cls
+
             with ctx():
                 self.base_model = cls(model, {adapter_name: peft_config}, adapter_name)
 
@@ -535,6 +546,8 @@ class PeftModel(PushToHubMixin, torch.nn.Module):
                     if "adapters" not in kwargs:
                         raise ValueError("If model_id is a local path, then `adapters` must be passed in kwargs.")
 
+
+
         if config.task_type not in MODEL_TYPE_TO_PEFT_MODEL_MAPPING.keys():
             model = cls(
                 model,
@@ -567,6 +580,8 @@ class PeftModel(PushToHubMixin, torch.nn.Module):
         missing_keys = [
             k for k in load_result.missing_keys if "vblora_vector_bank" not in k and "prompt_encoder" not in k
         ]
+        # print('missing_keys--',missing_keys)
+        # print(hey)
         if missing_keys:
             # Let's warn here since (in contrast to load_adapter) we don't return the load result, so it could be quite
             # difficult for users to even notice that something might have gone wrong here. As we filter out non PEFT
@@ -874,7 +889,7 @@ class PeftModel(PushToHubMixin, torch.nn.Module):
     def _enable_peft_forward_hooks(self, *args, **kwargs):
         # If the base model has a method called _enable_peft_forward_hooks, it is invoked as a context. Otherwise, this
         # runs without any changes
-        if hasattr(self.base_model, "_enable_peft_forward_hooks"):
+        if hasattr(self.base_model, "_enable_peft_forward_hooks"):   # This is True
             with self.base_model._enable_peft_forward_hooks(*args, **kwargs):
                 yield
             return
@@ -888,8 +903,20 @@ class PeftModel(PushToHubMixin, torch.nn.Module):
         Forward pass of the model.
         """
         with self._enable_peft_forward_hooks(*args, **kwargs):
+            # print("___---__--__", *args, "**888")   # This will have the entire dataloader here that is passed to the get_base_model....
+            # print(UHEOH)
+            # print("___", kwargs.items(), "**88")   # This is nothing but dict_items([]
+            # print(UHEOH)
+            # print("_--__", self.special_peft_forward_args, "**88**888")   # This is nothing but {'adapter_names'}
+            # print(UHEOH)
             kwargs = {k: v for k, v in kwargs.items() if k not in self.special_peft_forward_args}
-            return self.get_base_model()(*args, **kwargs)
+            # print("___---__", kwargs, "**88***8")      #  This is None
+            # print("__---__", self.get_base_model()(*args, **kwargs), "_--_")   
+            # Above print gives the loss: {'loss_sem_seg': tensor(0.0291, device='cuda:0',  grad_fn=<BinaryCrossEntropyWithLogitsBackward0>)}
+            # print("_------____---____---_", kwargs , '****8888****8888')
+            # print("_------____---____---_", self.get_base_model()(*args, **kwargs) , '_-____---___---__')
+            # print(OIH)
+            return self.get_base_model()(*args, **kwargs) 
 
     def generate(self, *args, **kwargs):
         with self._enable_peft_forward_hooks(*args, **kwargs):
@@ -958,7 +985,7 @@ class PeftModel(PushToHubMixin, torch.nn.Module):
         """
         return self.base_model if self.active_peft_config.is_prompt_learning else self.base_model.model
 
-    def add_adapter(self, adapter_name: str, peft_config: PeftConfig, low_cpu_mem_usage: bool = False) -> None:
+    def add_adapter(self, adapter_name: str, peft_config: PeftConfig, low_cpu_mem_usage: bool = False) -> None:          ################ cHECK THIS CODE.
         """
         Add an adapter to the model based on the passed configuration.
 
@@ -979,6 +1006,7 @@ class PeftModel(PushToHubMixin, torch.nn.Module):
                 adapters. Don't use this option when creating a new PEFT adapter for training.
 
         """
+
         prefix = PEFT_TYPE_TO_PREFIX_MAPPING.get(peft_config.peft_type)
         if prefix and adapter_name in prefix:
             warnings.warn(
@@ -1436,12 +1464,16 @@ class PeftModel(PushToHubMixin, torch.nn.Module):
         if adapter_name not in self.peft_config:
             raise ValueError(f"Adapter {adapter_name} not found.")
         self.active_adapter = adapter_name
+        # print(hey)
         if not self.peft_config[adapter_name].is_prompt_learning:
             # _set_adapter does not need to be called, since it's called through the BaseTuner class.
             self.base_model.set_adapter(adapter_name)
+            # print('adapter_name***************',adapter_name)
+            # print('self.base_model.set_adapter(adapter_name)-----------',self.base_model.set_adapter(adapter_name))
         else:
             # handle auxiliary modules
             _set_adapter(self, adapter_name)
+        # print(hey)
 
     @property
     def base_model_torch_dtype(self):
@@ -2438,6 +2470,8 @@ class PeftModelForTokenClassification(PeftModel):
     def __init__(
         self, model: torch.nn.Module, peft_config: PeftConfig = None, adapter_name: str = "default", **kwargs
     ) -> None:
+        
+        print(TOKEN)
         super().__init__(model, peft_config, adapter_name, **kwargs)
 
         classifier_module_names = ["classifier", "score"]
@@ -2654,6 +2688,7 @@ class PeftModelForQuestionAnswering(PeftModel):
     def __init__(
         self, model: torch.nn.Module, peft_config: PeftConfig, adapter_name: str = "default", **kwargs
     ) -> None:
+        print(QandA)
         super().__init__(model, peft_config, adapter_name, **kwargs)
 
         qa_module_names = ["qa_outputs"]
@@ -2888,6 +2923,7 @@ class PeftModelForFeatureExtraction(PeftModel):
     """
 
     def __init__(self, model: torch.nn.Module, peft_config: PeftConfig, adapter_name: str = "default", **kwargs):
+        print(FEATEXT)
         super().__init__(model, peft_config, adapter_name, **kwargs)
 
     def forward(

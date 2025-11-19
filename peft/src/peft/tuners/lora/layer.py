@@ -99,6 +99,22 @@ class LoraLayer(BaseTunerLayer):
         # For Embedding layer
         self.lora_embedding_A = nn.ParameterDict({})
         self.lora_embedding_B = nn.ParameterDict({})
+        # CONV layers for Conv1D
+        ############### conv layer for LoRA ###########
+        # self.conv1 = nn.Conv2d(8, 24, kernel_size=3, stride=2, padding=1, bias=False)
+        self.conv1 = nn.ModuleDict({})
+        # self.conv1 = self.conv1.cuda()
+
+        # self.conv1.weight.requires_grad_(True)
+        # if self.training:
+        print("=== Conv1 parameters specifically ===")
+        for name, param in self.conv1.named_parameters():
+            print(f"conv1.{name}: {param.shape}, requires_grad: {param.requires_grad}")
+
+        # # Initialize conv weights properly
+        # nn.init.kaiming_normal_(self.conv1.weight, mode='fan_out', nonlinearity='relu')
+        # assert self.conv1.weight.requires_grad, "Conv1 weight should require gradients!"
+        ############################ EO CONV ##########################
         # Mark the weight as unmerged
         self._disable_adapters = False
         self.merged_adapters = []
@@ -113,6 +129,10 @@ class LoraLayer(BaseTunerLayer):
         self.kwargs = kwargs
 
         base_layer = self.get_base_layer()
+
+        # if isinstance(X, nn.Parameter):
+        #     module.register_parameter(name, X)
+
         if isinstance(base_layer, nn.Linear):
             torch_supports_dtensor = version.parse(torch.__version__) >= version.parse("2.5.0")
             if torch_supports_dtensor and isinstance(self.base_layer.weight, torch.distributed.tensor.DTensor):
@@ -184,6 +204,123 @@ class LoraLayer(BaseTunerLayer):
         """
         return None
 
+#     def update_layer(
+#         self,
+#         adapter_name,
+#         r,
+#         lora_alpha,
+#         lora_dropout,
+#         init_lora_weights,
+#         use_rslora,
+#         use_dora: bool = False,
+#         use_qalora: bool = False,
+#         lora_bias: bool = False,
+#         qalora_group_size: int = 32,
+#         **kwargs,
+#     ):
+#         # collect the kwargs
+#         kwargs = locals().copy()
+#         del kwargs["self"]
+
+#         # This code works for linear layers, override for other layer types
+#         if r <= 0:
+#             raise ValueError(f"`r` should be a positive integer value but the value passed is {r}")
+
+#         if lora_bias and (getattr(self.get_base_layer(), "bias", None) is None):
+#             warnings.warn(
+#                 f"`lora_bias=True` was passed but the targeted layer of type {type(self.get_base_layer()).__name__} "
+#                 "has no bias. This means that merging LoRA weights won't be possible.",
+#                 PeftWarning,
+#             )
+
+#         lora_variant = self.resolve_lora_variant(
+#             use_dora=use_dora, use_qalora=use_qalora, qalora_group_size=qalora_group_size
+#         )
+
+
+#         # print("_---____---____---____--___", lora_variant)  #None
+#         # print(OIGHEIOHGWIOEH)
+
+#         if lora_variant is not None:
+#             self.lora_variant[adapter_name] = lora_variant
+
+#         self.r[adapter_name] = r
+#         self.lora_alpha[adapter_name] = lora_alpha
+#         if lora_dropout > 0.0:
+#             lora_dropout_layer = nn.Dropout(p=lora_dropout)
+#         else:
+#             lora_dropout_layer = nn.Identity()
+
+#         self.lora_dropout.update(nn.ModuleDict({adapter_name: lora_dropout_layer}))
+# ##########################################################################################################################
+#         # Actual trainable parameters
+#         self.lora_A[adapter_name] = nn.Linear(self.in_features, r, bias=False)      # Scale down
+#         self.lora_B[adapter_name] = nn.Linear(r, self.out_features, bias=lora_bias)     # Scale up
+#         self.conv1[adapter_name] = nn.Conv2d(r, 24, kernel_size=3, stride=2, padding=1, bias=False)
+#         self.conv1 = self.conv1.cuda()
+#         self.lora_bias[adapter_name] = lora_bias
+
+#         # print("_-____---____---____---", self.lora_A, self.lora_B, self.lora_bias, "OGIHEOIHGOIH")
+#         """
+#         ModuleDict(
+#         (acdc-fog): Linear(in_features=1024, out_features=8, bias=False)
+#         ) ModuleDict(
+#         (acdc-fog): Linear(in_features=8, out_features=1024, bias=False)
+#         ) {'acdc-fog': False}
+#         """
+#         # print(EOHGOIWHFOIEWH)
+
+
+#         # print("_--____---_____--_", use_rslora, use_dora, use_qalora)       # All Three False....
+#         # print(OWJWEJGIJWE)
+
+#         if use_rslora:
+#             self.scaling[adapter_name] = lora_alpha / math.sqrt(r)
+#         else:
+#             self.scaling[adapter_name] = lora_alpha / r
+
+#         self.use_dora[adapter_name] = use_dora
+
+#         # print("_----____---___---___----___", init_lora_weights)        #True
+#         # print(HOIEHFWOIH)
+
+#         # for inits that require access to the base weight, use gather_param_ctx so that the weight is gathered when using DeepSpeed
+#         if isinstance(init_lora_weights, str) and init_lora_weights.startswith("pissa"):
+#             with gather_params_ctx(self.get_base_layer().weight):
+#                 self.pissa_init(adapter_name, init_lora_weights)
+#         elif isinstance(init_lora_weights, str) and init_lora_weights.startswith("corda"):
+#             with gather_params_ctx(self.get_base_layer().weight):
+#                 self.corda_init(adapter_name, init_lora_weights)
+#         elif isinstance(init_lora_weights, str) and init_lora_weights.lower() == "olora":
+#             with gather_params_ctx(self.get_base_layer().weight):
+#                 self.olora_init(adapter_name)
+#         elif init_lora_weights == "loftq":
+#             with gather_params_ctx(self.get_base_layer().weight):
+#                 self.loftq_init(adapter_name)
+#         elif init_lora_weights == "eva":
+#             nn.init.zeros_(self.lora_B[adapter_name].weight)
+#         elif init_lora_weights == "orthogonal":
+#             with gather_params_ctx(self.get_base_layer().weight):
+#                 self.orthogonal_init(adapter_name)
+#         elif init_lora_weights:
+#             # This will be called..................
+#             self.reset_lora_parameters(adapter_name, init_lora_weights)
+#         # call this before init of the lora variants
+#         self._move_adapter_to_device_of_base_layer(adapter_name)
+
+
+#         # print("_-____----___---___", self.lora_variant)         # {}
+#         # print(HOHWGOIH)
+#         if adapter_name in self.lora_variant:
+#             self.lora_variant[adapter_name].init(self, **kwargs)
+
+#         # print("_gweghherherje5jjdejerjr_-----____----____--____", self.set_adapter(self.active_adapters))      #None
+#         # print(OIWHEgoiHWEIR)
+#         self.set_adapter(self.active_adapters)
+
+#     #########################################
+
+
     def update_layer(
         self,
         adapter_name,
@@ -216,6 +353,11 @@ class LoraLayer(BaseTunerLayer):
         lora_variant = self.resolve_lora_variant(
             use_dora=use_dora, use_qalora=use_qalora, qalora_group_size=qalora_group_size
         )
+
+
+        # print("_---____---____---____--___", lora_variant)  #None
+        # print(OIGHEIOHGWIOEH)
+
         if lora_variant is not None:
             self.lora_variant[adapter_name] = lora_variant
 
@@ -227,11 +369,39 @@ class LoraLayer(BaseTunerLayer):
             lora_dropout_layer = nn.Identity()
 
         self.lora_dropout.update(nn.ModuleDict({adapter_name: lora_dropout_layer}))
-
+##########################################################################################################################
         # Actual trainable parameters
-        self.lora_A[adapter_name] = nn.Linear(self.in_features, r, bias=False)
-        self.lora_B[adapter_name] = nn.Linear(r, self.out_features, bias=lora_bias)
+        self.lora_A[adapter_name] = nn.Linear(self.in_features, r, bias=False)      # Scale down
+        self.lora_B[adapter_name] = nn.Linear(r, self.out_features, bias=lora_bias)     # Scale up
+        # import ipdb; ipdb.set_trace(context=10)
+
+        if "conv" in adapter_name:
+            if len(adapter_name)>25:
+                # import ipdb; ipdb.set_trace()
+                new_rank = adapter_name.count("conv")*8
+                # self.lora_A[adapter_name] = nn.Linear(self.in_features, new_rank, bias=False)      # Scale down
+                # self.lora_B[adapter_name] = nn.Linear(new_rank, self.out_features, bias=lora_bias)     # Scale up
+                self.conv1[adapter_name] = nn.Conv2d(new_rank, 24, kernel_size=3, stride=2, padding=1, bias=False)
+            else:
+                # self.lora_A[adapter_name] = nn.Linear(self.in_features, r, bias=False)      # Scale down
+                # self.lora_B[adapter_name] = nn.Linear(r, self.out_features, bias=lora_bias)     # Scale up
+                self.conv1[adapter_name] = nn.Conv2d(r, 24, kernel_size=3, stride=2, padding=1, bias=False)
+            self.conv1 = self.conv1.cuda()
         self.lora_bias[adapter_name] = lora_bias
+
+        # print("_-____---____---____---", self.lora_A, self.lora_B, self.lora_bias, "OGIHEOIHGOIH")
+        """
+        ModuleDict(
+        (acdc-fog): Linear(in_features=1024, out_features=8, bias=False)
+        ) ModuleDict(
+        (acdc-fog): Linear(in_features=8, out_features=1024, bias=False)
+        ) {'acdc-fog': False}
+        """
+        # print(EOHGOIWHFOIEWH)
+
+
+        # print("_--____---_____--_", use_rslora, use_dora, use_qalora)       # All Three False....
+        # print(OWJWEJGIJWE)
 
         if use_rslora:
             self.scaling[adapter_name] = lora_alpha / math.sqrt(r)
@@ -239,6 +409,9 @@ class LoraLayer(BaseTunerLayer):
             self.scaling[adapter_name] = lora_alpha / r
 
         self.use_dora[adapter_name] = use_dora
+
+        # print("_----____---___---___----___", init_lora_weights)        #True
+        # print(HOIEHFWOIH)
 
         # for inits that require access to the base weight, use gather_param_ctx so that the weight is gathered when using DeepSpeed
         if isinstance(init_lora_weights, str) and init_lora_weights.startswith("pissa"):
@@ -259,14 +432,21 @@ class LoraLayer(BaseTunerLayer):
             with gather_params_ctx(self.get_base_layer().weight):
                 self.orthogonal_init(adapter_name)
         elif init_lora_weights:
+            # This will be called..................
             self.reset_lora_parameters(adapter_name, init_lora_weights)
         # call this before init of the lora variants
         self._move_adapter_to_device_of_base_layer(adapter_name)
 
+
+        # print("_-____----___---___", self.lora_variant)         # {}
+        # print(HOHWGOIH)
         if adapter_name in self.lora_variant:
             self.lora_variant[adapter_name].init(self, **kwargs)
 
+        # print("_gweghherherje5jjdejerjr_-----____----____--____", self.set_adapter(self.active_adapters))      #None
+        # print(OIWHEgoiHWEIR)
         self.set_adapter(self.active_adapters)
+
 
     def reset_lora_parameters(self, adapter_name, init_lora_weights):
         if init_lora_weights is False:
@@ -616,9 +796,42 @@ class Linear(nn.Module, LoraLayer):
         lora_bias: bool = False,
         **kwargs,
     ) -> None:
+        # print(LINEAR)
         super().__init__()
         LoraLayer.__init__(self, base_layer, **kwargs)
+
+        self.adapt_name = adapter_name
+        
         self.fan_in_fan_out = fan_in_fan_out
+
+        ############### conv layer for LoRA ###########
+        # self.conv1 = nn.Conv2d(8, 24, kernel_size=3, stride=2, padding=1, bias=False)
+        # self.conv1 = self.conv1.cuda()
+
+        # self.conv1.weight.requires_grad_(True)
+
+        # for param in self.conv1.parameters():
+        #     param.requires_grad = True
+
+
+        # print("=== Conv1 parameters specifically ===")
+        # for name, param in self.conv1.named_parameters():
+        #     print(f"conv1.{name}: {param.shape}, requires_grad: {param.requires_grad}")
+
+        # # Initialize conv weights properly
+        # nn.init.kaiming_normal_(self.conv1.weight, mode='fan_out', nonlinearity='relu')
+        # # self.conv2 = nn.Conv2d(3, base_layer, kernel_size=3, stride=2, padding=1, bias=False)
+        # # self.conv3 = nn.Conv2d(3, base_layer, kernel_size=3, stride=2, padding=1, bias=False)
+
+        # # Debug: Print all parameters
+        # # print("=== All module parameters ===")
+        # # for name, param in self.named_parameters():
+        # #     print(f"{name}: {param.shape}, requires_grad: {param.requires_grad}, device: {param.device}")
+        # assert self.conv1.weight.requires_grad, "Conv1 weight should require gradients!"
+######################################################### EOF CONV #########################################################
+        # print("=== Conv1 parameters specifically ===")
+        # for name, param in self.conv1.named_parameters():
+        #     print(f"conv1.{name}: {param.shape}, requires_grad: {param.requires_grad}, device: {param.device}")
 
         self._active_adapter = adapter_name
         self.update_layer(
@@ -634,6 +847,7 @@ class Linear(nn.Module, LoraLayer):
         self.is_target_conv_1d_layer = is_target_conv_1d_layer
 
     def resolve_lora_variant(self, *, use_dora: bool, **kwargs) -> Optional[LoraVariant]:
+        # print(RESOLVELORAVARIANT)
         if not use_dora:
             return None
 
@@ -642,6 +856,7 @@ class Linear(nn.Module, LoraLayer):
         return DoraLinearVariant()
 
     def merge(self, safe_merge: bool = False, adapter_names: Optional[list[str]] = None) -> None:
+        print(MERGE)
         """
         Merge the active adapter weights into the base weights
 
@@ -709,6 +924,7 @@ class Linear(nn.Module, LoraLayer):
                 self.merged_adapters.append(active_adapter)
 
     def unmerge(self) -> None:
+        print(UNMERGE)
         """
         This method unmerges all merged adapter layers from the base weights.
         """
@@ -731,6 +947,7 @@ class Linear(nn.Module, LoraLayer):
                     self.get_base_layer().bias.data -= self.lora_B[active_adapter].bias * self.scaling[active_adapter]
 
     def get_delta_weight(self, adapter) -> torch.Tensor:
+        print(GETDELTAWEIGHT)
         """
         Compute the delta weight for the given adapter.
 
@@ -763,49 +980,445 @@ class Linear(nn.Module, LoraLayer):
             self.lora_B[adapter].weight.data = weight_B.to(dtype)
 
         return output_tensor
+    
+
+
+    def analyze_lora_parameters(model):
+        """Analyze parameters for LoRA model specifically"""
+        
+        base_params = 0
+        lora_params = 0
+        conv_params = 0
+        other_params = 0
+        
+        print("=" * 80)
+        print(f"{'Component':<20} {'Layer Name':<35} {'Parameters':<15} {'Trainable':<10}")
+        print("=" * 80)
+        
+        for name, param in model.named_parameters():
+            param_count = param.numel()
+            trainable = "Yes" if param.requires_grad else "No"
+            
+            if "lora_A" in name or "lora_B" in name:
+                lora_params += param_count
+                component = "LoRA"
+            elif "conv1" in name or "conv2" in name or "conv3" in name:
+                conv_params += param_count
+                component = "Conv"
+            elif "base_layer" in name or "weight" in name or "bias" in name:
+                base_params += param_count
+                component = "Base"
+            else:
+                other_params += param_count
+                component = "Other"
+                
+            print(f"{component:<20} {name:<35} {param_count:<15,} {trainable:<10}")
+        
+        total = base_params + lora_params + conv_params + other_params
+        
+        print("=" * 80)
+        print(f"{'Summary':<56} {'Parameters':<15} {'%':<8}")
+        print("-" * 80)
+        print(f"{'Base model parameters':<56} {base_params:<15,} {base_params/total*100:.1f}%")
+        print(f"{'LoRA parameters':<56} {lora_params:<15,} {lora_params/total*100:.1f}%")
+        print(f"{'Conv parameters':<56} {conv_params:<15,} {conv_params/total*100:.1f}%")
+        print(f"{'Other parameters':<56} {other_params:<15,} {other_params/total*100:.1f}%")
+        print("-" * 80)
+        print(f"{'TOTAL':<56} {total:<15,} {'100.0%':<8}")
+        print("=" * 80)
+
+
+    # def forward(self, x: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
+
+    #     """
+    #     self.base_layer will be nothing but Linear layer (Linear(in_features=1024, out_features=4096, bias=True))
+    #     The fist iterations x.shape will be torch.Size([577, 2, 1024])
+
+    #     """
+    #     # import ipdb
+    #     # ipdb.set_trace(context=10)
+    #     # self.analyze_lora_parameters()
+    #     # conv1_trainable_before = sum(p.numel() for p in self.conv1.parameters() if p.requires_grad)
+    #     # print(f"BEFORE forward - Conv1 trainable params: {conv1_trainable_before:,}")
+
+    #     # self.analyze_lora_parameters(self)
+    #     self._check_forward_args(x, *args, **kwargs)
+    #     adapter_names = kwargs.pop("adapter_names", None)
+    #     # count = 1
+    #     # if self.conv1.weight.device != x.device or count==1:
+    #     #     self.conv1 = self.conv1.to(x.device)
+
+    #     # if not self.conv1.weight.requires_grad:
+    #     #     for param in self.conv1.parameters():
+    #     #         param.requires_grad = True
+    #     # print("____----___---___---", self.base_layer)
+    #     # print(HOHWTIOh)
+
+    #     if self.disable_adapters:
+    #         if self.merged:
+    #             self.unmerge()
+    #         result = self.base_layer(x, *args, **kwargs)
+    #     elif adapter_names is not None:
+    #         result = self._mixed_batch_forward(x, *args, adapter_names=adapter_names, **kwargs)
+    #     elif self.merged:
+    #         result = self.base_layer(x, *args, **kwargs)
+    #     else:
+    #         result = self.base_layer(x, *args, **kwargs)
+    #         torch_result_dtype = result.dtype
+
+    #         lora_A_keys = self.lora_A.keys()
+
+
+    #         # import ipdb; ipdb.set_trace()
+    #         adapters_keys = list(self.lora_A.keys())
+    #         self.active_adapters.append(adapters_keys[-1])
+
+    #         for active_adapter in self.active_adapters:
+    #             if active_adapter not in lora_A_keys:
+    #                 continue
+
+    #             lora_A = self.lora_A[active_adapter]
+    #             lora_B = self.lora_B[active_adapter]
+
+    #             if "conv" in active_adapter:
+    #                 conv1 = self.conv1[active_adapter]
+
+    #             dropout = self.lora_dropout[active_adapter]
+    #             scaling = self.scaling[active_adapter]
+
+    #             # print(x.shape, "____----___----___---9wioehgwoihgowi")
+    #             x = self._cast_input_dtype(x, lora_A.weight.dtype)
+    #             # x shape does not change even after passing through self._cast_input_dtype...
+    #             # print(x.shape, "____-gweghweh--_____--_____--_____-")
+    #             # print(OIHEWIOH)
+    #             # import ipdb; ipdb.set_trace()
+
+    #             if active_adapter not in self.lora_variant:  # vanilla LoRA
+    #                 # if self.adapt_name[:-5] == "_conv":
+
+    #                 ############################################## Conv LORA #######################################
+    #                 # Goes here during the forward pass....
+    #                 # print("____---___-AAAAAAAA--____--__", lora_A, "*******8888****888***88****88**")
+    #                 # print("____---___-BBBBBBBB--____--__", lora_B, "*******8888****888***88****88**")
+    #                 # The above print statement gives the following: 
+    #                 # which are nothing but LoraA and LoraB layers...
+    #                 # print(OIEHOI)
+
+    #                 # print("_--____----___---____input shape for lora", x.shape)     #torch.Size([577, 2, 1024])
+    #                 # if x.shape[0] ==577:
+    #                 #     print("IMG ENCODER...........") # shape will be [577, 2, 1024]
+    #                 # else:
+    #                 #     print("TEXT ENCODER...........") # shape will be [77, 19, 3072]
+    #                 # print(HIEUY)
+    #                 ######## ORiginal process
+    #                 # result = result + lora_B(lora_A(dropout(x))) * scaling
+
+    #                 ######### Broken process for modifications...... 
+    #                 la = lora_A(dropout(x))         # la : L, B, D
+    #                 # print(la.shape, "before first permute")     #torch.Size([577, 2, 8])
+    #                 L_orig, B_orig, C_orig = la.shape
+    #                 ## Convert to batch first...
+    #                 # la = la.permute(1, 0, 2)  # [2, 577, 8]
+    #                 # # print(la.shape, "after first permute")      #torch.Size([2, 577, 8])
+    #                 # # Adaptive pooling preparation...
+    #                 # la = la.permute(0,2,1)   #  [2, 8, 576]
+    #                 # # # print(la.shape, "after second permute")     #torch.Size([2, 8, 577])
+
+    #                 #   one final permute ...
+    #                 la = la.permute(1, 2, 0)    #     #torch.Size([2, 8, 577])
+
+    #                 ######### L: sequence length, B: Batch size, C: Feature dimension
+    #                 # Unecessary below both
+    #                 # B, C, L = la.shape # (should give B=2, C=8, L=577)
+    #                 # B, L, C = la.shape      # B =2, L=577, C=8
+    #                 if la.shape[0] == 5 and la.shape[2] == 577 and ("conv" in active_adapter):
+    #                 # if la.shape[0] == 5 and la.shape[2] == 577:
+    #                     target_size = int(math.sqrt(L_orig))
+    #                     target_spatial_size = target_size * target_size     #  576 (24 *24)
+    #                     pooled = F.adaptive_avg_pool1d(
+    #                         la,  # [2, 8, 577]
+    #                         target_spatial_size  # Pool to 576
+    #                     ).permute(0, 2, 1)  # [2, 576, 8]
+
+    #                     # print("Pooled shape:", pooled.shape)
+    #                     B_new, spatial_tokens, C_new = pooled.shape  # B_new=2, spatial_tokens=576, C_new=8
+
+    #                     spatial_4d = pooled.reshape(B_new, target_size, target_size, C_new).permute(0, 3, 1, 2)
+    #                     # print("Spatial 4D shape:", spatial_4d.shape)  # Should be [2, 8, 24, 24]
+    #                     # print(HEIYIO)
+    #                     # print(f"Conv1 training mode: {conv1.training}")
+    #                     # import ipdb;
+    #                     # ipdb.set_trace(context=10)
+
+    #                     # c1_op = self.conv1(spatial_4d)
+    #                     # c1_op = self.conv1(spatial_4d.to(self.conv1.weight.device))
+    #                     c1_op = conv1(spatial_4d.to(conv1.weight.device))
+    #                     # m = nn.SiLU()
+    #                     # c1_op = m(c1_op)
+    #                     # print("---___---___---____First conv layer output shape", c1_op.shape)
+    #                     ################ Reverse the operation ###########
+    #                     conv1_trainable_after = sum(p.numel() for p in conv1.parameters() if p.requires_grad)
+    #                     print(f"AFTER forward - Conv1 trainable params: {conv1_trainable_after:,}")
+
+    #                     # if conv1_trainable_after > conv1_trainable_before:
+    #                     #     print("✅ Conv1 became trainable after forward pass!")
+    #                     conv_flat = c1_op.permute(0, 2, 3, 1).reshape(B_new, -1, C_new)
+
+    #                     if conv_flat.shape[1] != L_orig:  # 576 != 577
+    #                         conv_upsampled = F.interpolate(
+    #                             conv_flat.permute(0, 2, 1),  # [2, 8, 576]
+    #                             size=L_orig,  # Interpolate back to 577
+    #                             mode='linear',
+    #                             align_corners=False
+    #                         ).permute(0, 2, 1)  # [2, 577, 8]
+    #                     else:
+    #                         conv_upsampled = conv_flat
+                        
+    #                     # Step 3: Convert back to channel-first then to original format
+    #                     # Current: [2, 577, 8] (batch, seq, channels)
+    #                     conv_result = conv_upsampled.permute(0, 2, 1)  # [2, 8, 577]
+    #                     conv_result = conv_result.permute(1, 2, 0)     # [8, 577, 2]
+    #                     conv_result = conv_result.permute(1, 2, 0)
+
+    #                     # print("______-CONV_RESULT SHAPe-______-", conv_result.shape)
+    #                     # print(HEY)
+
+    #                     # print(HEIYIO)
+    #                     #####################################GOhoiheoighoiehgoiehrg
+    #                     # print("-___----__target size", target_size)
+
+    #                     # pooled = F.adaptive_avg_pool1d(
+    #                     #     la,  # [B, C, L]
+    #                     #     target_spatial_size
+    #                     # ).permute(0, 2, 1)  # [B, H*W, C]
+
+    #                     # print("----____---___pooled shape", pooled.shape, "*88*****88****888*****8")
+
+    #                     # spatial_4d = pooled.reshape(B, target_size, target_size, C).permute(0, 3, 1, 2)
+
+    #                     # print("___--------------_____--- spatial 4d shape...", spatial_4d.shape)
+
+    #                     ##########################################################gfhrehrrrerjrxdehjrtjh
+
+
+    #                     # # Adaptive pooling to target spatial size
+    #                     # # Pool sequence dimension to target spatial size
+    #                     # pooled = F.adaptive_avg_pool1d(
+    #                     #     la.permute(1, 2, 0),  # [B, C, L]
+    #                     #     # self.target_h * self.target_w
+    #                     #     577
+    #                     # ).permute(0, 2, 1)  # [B, H*W, C]
+
+
+    #                     # Simply use 1D interpolation along sequence dimension
+    #                     # la_permuted = la.permute(1, 2, 0)  # [2, 8, 577]
+                        
+    #                     # seq_len, batch_size, features = la.shape
+    #                     # h = w = int(math.sqrt(seq_len-1))  # e.g., 577 -> 24x24 (approximately) L/D = Feature dimension
+    #                     # print("-----___lora a shape", la.shape)       # torch.Size([577, 2, 8]) - for clip vision
+    #                     # print("-----___lora a shape", la.shape)       # torch.Size([77, 19, 8]) - for clip text
+    #                     # print("-----___lora a shape", la.shape)       # torch.Size([38, 576, 8]) - for swin transformer mlp
+    #                     # print("-----___lora a shape", la.shape)       # torch.Size([1152, 256, 8]) - for last attn mlp
+    #                     # print(HOIYE)
+
+    #                     # Reshape to 4D: (batch, channels, height, width)
+    #                     # la_4d = la.permute(1, 2, 0).reshape(batch_size, features, h, w)
+
+    #                     # feat_2 = F.interpolate(la_permuted, scale_factor=2, mode='linear', align_corners=False, )
+
+    #                     # feat_1 = F.interpolate(feat_2, scale_factor=0.5, mode='linear', align_corners=False, )
+
+    #                     # print("_--____---___--__LoRA shapes 1___", la_permuted.shape)    
+    #                     # print("_--____---___--__LoRA shapes 2___", feat_1.shape)
+    #                     # print("_--____---___--__LoRA shapes 3___", feat_2.shape)
+    #                     # print(JHYE)
+    #                     # lca = self.conv1(la)
+    #                     #################################################################################################
+    #                     # print("-____----______conv layer shape after lora", lca.shape)
+    #                     # la = lora_A(dropout(x))         # la : L, B, D (when conv lora is not used...)
+    #                     # lb = lora_B(la)                   #(when conv lora is not used...)
+    #                     # print("-______-_______--____--____--_", conv_result.shape, "____--______--____--_")
+    #                     # import ipdb; ipdb.set_trace()
+    #                     # print("-______-_______--____--____--_", lora_B.weight.shape, "____--______--____--_")
+    #                     lb = lora_B(conv_result)
+    #                 else:
+    #                     la = lora_A(dropout(x))
+    #                     lb = lora_B(la)
+    #                 # print("-----___lora b shape", lb.shape)       # torch.Size([577, 2, 1024/4096]) - for clip vision
+    #                 # print("-----___lora b shape", lb.shape)       # torch.Size([77, 19, 3072/768 - based on ip]) - for clip text
+    #                 # print("-----___lora b shape", lb.shape)       # torch.Size([38, 576, 128/512]) - for swin transformer mlp
+    #                 # print("-----___lora b shape", lb.shape)       # torch.Size([1152, 256, 128/512 (based on ip)]) - for last attn mlp
+    #                 scaled_lora = lb * scaling
+                    
+    #                 # else:
+    #                 #     la = lora_A(dropout(x))
+    #                 #     lb = lora_B(la)
+    #                 #     scaled_lora = lb * scaling
+
+    #                 result = result + scaled_lora
+
+    #             else:
+    #                 result = self.lora_variant[active_adapter].forward(
+    #                     self,
+    #                     active_adapter=active_adapter,
+    #                     x=x,
+    #                     result=result,
+    #                 )
+
+    #         result = result.to(torch_result_dtype)
+    #         # count += 1
+    #     # print(GOIWHEGOIHEW)
+    #     return result
+
+ ###############################################################################################################
 
     def forward(self, x: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
+        """
+        Forward pass with LoRA adapters and optional convolutional processing.
+        
+        Args:
+            x: Input tensor of shape (L, B, D) where L=sequence length, 
+            B=batch size, D=feature dimension
+        
+        Returns:
+            Processed tensor with same shape as base layer output
+        """
         self._check_forward_args(x, *args, **kwargs)
         adapter_names = kwargs.pop("adapter_names", None)
 
+        # Handle disabled or merged adapters
         if self.disable_adapters:
             if self.merged:
                 self.unmerge()
-            result = self.base_layer(x, *args, **kwargs)
-        elif adapter_names is not None:
-            result = self._mixed_batch_forward(x, *args, adapter_names=adapter_names, **kwargs)
-        elif self.merged:
-            result = self.base_layer(x, *args, **kwargs)
-        else:
-            result = self.base_layer(x, *args, **kwargs)
-            torch_result_dtype = result.dtype
+            return self.base_layer(x, *args, **kwargs)
+        
+        if adapter_names is not None:
+            return self._mixed_batch_forward(x, *args, adapter_names=adapter_names, **kwargs)
+        
+        if self.merged:
+            return self.base_layer(x, *args, **kwargs)
 
-            lora_A_keys = self.lora_A.keys()
-            for active_adapter in self.active_adapters:
-                if active_adapter not in lora_A_keys:
-                    continue
+        # Main LoRA processing path
+        result = self.base_layer(x, *args, **kwargs)
+        torch_result_dtype = result.dtype
+        
+        # Add latest adapter to active list
+        adapters_keys = list(self.lora_A.keys())
+        if adapters_keys:
+            self.active_adapters.append(adapters_keys[-1])
 
-                lora_A = self.lora_A[active_adapter]
-                lora_B = self.lora_B[active_adapter]
-                dropout = self.lora_dropout[active_adapter]
-                scaling = self.scaling[active_adapter]
-                x = self._cast_input_dtype(x, lora_A.weight.dtype)
-                if active_adapter not in self.lora_variant:  # vanilla LoRA
-                    result = result + lora_B(lora_A(dropout(x))) * scaling
+        # Process each active adapter
+        for active_adapter in self.active_adapters:
+            if active_adapter not in self.lora_A:
+                continue
+
+            lora_A = self.lora_A[active_adapter]
+            lora_B = self.lora_B[active_adapter]
+            dropout = self.lora_dropout[active_adapter]
+            scaling = self.scaling[active_adapter]
+            
+            # Cast input to match LoRA weight dtype
+            x_casted = self._cast_input_dtype(x, lora_A.weight.dtype)
+
+            if active_adapter in self.lora_variant:
+                # Use custom variant forward
+                result = self.lora_variant[active_adapter].forward(
+                    self,
+                    active_adapter=active_adapter,
+                    x=x_casted,
+                    result=result,
+                )
+            else:
+                # Standard LoRA path
+                la = lora_A(dropout(x_casted))  # Shape: (L, B, D')
+                L_orig, B_orig, C_orig = la.shape
+                
+                # Check if convolutional processing is needed
+                use_conv = ("conv" in active_adapter and 
+                        la.shape[0] == 5 and 
+                        la.shape[2] == 577)
+                
+                if use_conv:
+                    conv1 = self.conv1[active_adapter]
+                    lb = self._apply_conv_processing(la, conv1, L_orig, B_orig, C_orig, lora_B)
                 else:
-                    result = self.lora_variant[active_adapter].forward(
-                        self,
-                        active_adapter=active_adapter,
-                        x=x,
-                        result=result,
-                    )
+                    lb = lora_B(la)
+                
+                result = result + (lb * scaling)
 
-            result = result.to(torch_result_dtype)
+        return result.to(torch_result_dtype)
 
-        return result
+
+    def _apply_conv_processing(
+        self, 
+        la: torch.Tensor, 
+        conv1: nn.Module,
+        L_orig: int, 
+        B_orig: int, 
+        C_orig: int,
+        lora_B: nn.Module
+    ) -> torch.Tensor:
+        """
+        Apply convolutional processing to LoRA features.
+        
+        Args:
+            la: LoRA A output of shape (L, B, D')
+            conv1: Convolutional layer
+            L_orig, B_orig, C_orig: Original dimensions
+            lora_B: LoRA B layer
+        
+        Returns:
+            Processed tensor ready for LoRA B
+        """
+        # Reshape to (B, D', L) for pooling
+        la = la.permute(1, 2, 0)  # (B, D', L)
+        
+        # Pool to square spatial dimensions
+        target_size = int(math.sqrt(L_orig))
+        target_spatial_size = target_size * target_size  # 576 for L=577
+        
+        pooled = F.adaptive_avg_pool1d(la, target_spatial_size)  # (B, D', 576)
+        pooled = pooled.permute(0, 2, 1)  # (B, 576, D')
+        
+        B_new, spatial_tokens, C_new = pooled.shape
+        
+        # Reshape to 4D for conv: (B, D', H, W)
+        spatial_4d = pooled.reshape(B_new, target_size, target_size, C_new)
+        spatial_4d = spatial_4d.permute(0, 3, 1, 2)  # (B, D', H, W)
+        
+        # Apply convolution
+        c1_op = conv1(spatial_4d.to(conv1.weight.device))
+        
+        if self.training:
+            conv1_trainable = sum(p.numel() for p in conv1.parameters() if p.requires_grad)
+            print(f"Conv1 trainable params: {conv1_trainable:,}")
+        
+        # Flatten back: (B, D', H, W) -> (B, H*W, D')
+        conv_flat = c1_op.permute(0, 2, 3, 1).reshape(B_new, -1, C_new)
+        
+        # Interpolate back to original sequence length if needed
+        if conv_flat.shape[1] != L_orig:
+            conv_upsampled = F.interpolate(
+                conv_flat.permute(0, 2, 1),  # (B, D', 576)
+                size=L_orig,  # Interpolate to 577
+                mode='linear',
+                align_corners=False
+            ).permute(0, 2, 1)  # (B, 577, D')
+        else:
+            conv_upsampled = conv_flat
+        
+        # Convert back to original format: (L, B, D')
+        conv_result = conv_upsampled.permute(1, 0, 2)  # (577, B, D')
+        
+        return lora_B(conv_result)
+
+
+    ###############################################################################################################
 
     def __repr__(self) -> str:
         rep = super().__repr__()
+        # print("GWEHGOHOI", rep, "__rrrrrrrrrrrrrrrrrrrrrrrrrrrr---__")
+        # print(IUHGWOUEH)
         return "lora." + rep
 
 
@@ -1851,6 +2464,7 @@ class ParamWrapper(nn.Module, LoraLayer):
         lora_bias: bool = False,
         **kwargs,
     ) -> None:
+        
         super().__init__()
         LoraLayer.__init__(self, base_layer, **kwargs)
         self.parameter_name = parameter_name
@@ -2140,6 +2754,8 @@ class ParamWrapper(nn.Module, LoraLayer):
         return base_layer
 
     def forward(self, x: torch.Tensor, *args: Any, **kwargs: Any) -> torch.Tensor:
+
+        # print(PARAMWRAP)
         self._check_forward_args(x, *args, **kwargs)
         adapter_names = kwargs.pop("adapter_names", None)
 
@@ -2174,11 +2790,28 @@ def dispatch_default(
 ) -> Optional[torch.nn.Module]:
     new_module = None
 
+    """
+    target: target layers in this project it is only Linear layers with of type torch.nn.Module()
+    adapter_name: As provided in the config for example: acdc-fog, acdc-rain, etc...
+    lora_config: config file key_values...
+    parameter_name: None in for all...
+    """
+    # print("____----___--____---_____", parameter_name)
+    # print(IUEHR)
+
+    
     if isinstance(target, BaseTunerLayer):
         target_base_layer = target.get_base_layer()
     else:
         target_base_layer = target
 
+
+    # print("_-____---____---___---____", "BaseTuner", isinstance(target, BaseTunerLayer), "Embedding", isinstance(target_base_layer, torch.nn.Embedding),
+    #        "Conv2D", isinstance(target_base_layer, torch.nn.Conv2d), "Conv3D", isinstance(target_base_layer, torch.nn.Conv3d), 
+    #        "Conv1D", isinstance(target_base_layer, nn.Conv1d), "Multiheadattn", isinstance(target_base_layer, torch.nn.MultiheadAttention),
+    #        "Linear" ,isinstance(target_base_layer, torch.nn.Linear))
+    # Only Linear is True and all others are False...
+    
     if parameter_name is not None:
         new_module = ParamWrapper(target, adapter_name, parameter_name=parameter_name, **kwargs)
     elif isinstance(target_base_layer, torch.nn.Embedding):
@@ -2199,6 +2832,15 @@ def dispatch_default(
         kwargs.update(lora_config.loftq_config)
         new_module = MultiheadAttention(target, adapter_name, **kwargs)
     elif isinstance(target_base_layer, torch.nn.Linear):
+
+        # print("_______--____---____---__", kwargs)
+        """
+        {'device_map': None, 'r': 8, 'lora_alpha': 16, 'lora_dropout': 0, 'fan_in_fan_out': False,
+        'init_lora_weights': True, 'use_rslora': False, 'use_dora': False, 'use_qalora': False,
+        'qalora_group_size': 16, 'ephemeral_gpu_offload': False, 'lora_bias': False,
+        'loaded_in_8bit': False, 'loaded_in_4bit': False}
+        """
+        
         if kwargs["fan_in_fan_out"]:
             warnings.warn(
                 "fan_in_fan_out is set to True but the target module is `torch.nn.Linear`. "
@@ -2207,6 +2849,7 @@ def dispatch_default(
             kwargs["fan_in_fan_out"] = lora_config.fan_in_fan_out = False
         kwargs.update(lora_config.loftq_config)
         new_module = Linear(target, adapter_name, **kwargs)
+        # print("_____----____---_____--_____-", new_module, "_wghoiwehgioewhio__-")
     elif isinstance(target_base_layer, Conv1D):
         if not kwargs["fan_in_fan_out"]:
             warnings.warn(

@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# export DETECTRON2_DATASETS="/data/aditya/ov-seg-main/datasets/"
+
+# export DETECTRON2_DATASETS="/datasets"
+
+# export CUDA_VISIBLE_DEVICES=0,1
+# echo "🚀 Using GPUs: $CUDA_VISIBLE_DEVICES"
+
 config=$1
 gpus=$2
 output=$3

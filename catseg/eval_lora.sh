@@ -4,6 +4,9 @@ config=$1
 gpus=$2
 output=$3
 
+export DETECTRON2_DATASETS="/datasets"
+
+
 if [ -z $config ]
 then
     echo "No config file found! Run with "sh eval.sh [CONFIG_FILE] [NUM_GPUS] [OUTPUT_DIR] [OPTS]""

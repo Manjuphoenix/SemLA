@@ -99,6 +99,7 @@ class DomainOrchestrator:
         # This can be fixed by refactoring the catseg repo
         parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         catseg_path = os.path.join(parent_dir, "catseg") # TODO: This is a hardcoded path, it should be a parameter
+        # sed_path = os.path.join(parent_dir) # TODO: This is a hardcoded path, it should be a parameter
         
         print(f"Changing directory to '{catseg_path}' ...")
 
@@ -144,6 +145,8 @@ class DomainOrchestrator:
         )
         res = benchmark_catseg(self.current_model, target_domain.args)
         return res
+
+    
 
     def _set_current_target_domain(
         self,
@@ -193,7 +196,6 @@ class DomainOrchestrator:
         """
         Add the specified domains to the orchestrator.
         """
-
         source_domains = {}
 
         for source_domain_name in source_domain_names:
@@ -308,7 +310,8 @@ class DomainOrchestrator:
         remove_target_adapter: bool,
         mode: Literal["uniform", "centroid"],
         target_embedding=None,
-        softmax_temperature: int | None = 0.05,
+        # softmax_temperature: int | None = 0.05,
+        softmax_temperature: int = 0.05,
         top_k: int = 5,  # number of domains to merge
         combination_type: str = "cat",
         similarity_measure: Callable[
@@ -321,18 +324,51 @@ class DomainOrchestrator:
         Merge the source domains and benchmark the merged adapter on the target domain.
         """
     
-        source_domains = None
+        # source_domains = None
+        # if remove_target_adapter:
+        #     print(f"Removing {target_domain.name} from source domains!")
+        #     source_domains = [
+        #         domain
+        #         for _, domain in self._source_domains.items() if domain.name != target_domain.name
+        #     ]
+        # else:
+        #     source_domains = [
+        #         domain
+        #         for _, domain in self._source_domains.items()
+        #     ]
+
+
+        source_domains = []
         if remove_target_adapter:
             print(f"Removing {target_domain.name} from source domains!")
-            source_domains = [
-                domain
-                for _, domain in self._source_domains.items() if domain.name != target_domain.name
-            ]
+            # source_domains = [
+            #     domain
+            #     for _, domain in self._source_domains.items() if domain.name != target_domain.name
+            # ]
+
+            ind_target_name = target_domain.name.split("-")
+
+            if len(ind_target_name)>1:
+                for _, domain in self._source_domains.items():
+                    if domain.name != target_domain.name  and  domain.name  !=  (ind_target_name[0] + "_conv-" + ind_target_name[-1]):
+                        source_domains.append(domain)
+            else:
+                for _, domain in self._source_domains.items():
+                    if domain.name != target_domain.name  and  domain.name  !=  target_domain.name + "_conv":
+                        source_domains.append(domain)
+            # source_domains = [
+            #     domain
+            #     for _, domain in self._source_domains.items() if self._normalize_domain_name(domain.name) != target_domain.name
+            # ]
         else:
-            source_domains = [
-                domain
-                for _, domain in self._source_domains.items()
-            ]
+            # source_domains = [
+            #     domain
+            #     for _, domain in self._source_domains.items()
+            # ]
+            for _, domain in self._source_domains.items():
+                source_domain.append(domain)
+
+
 
         if mode == "uniform":
 
@@ -352,7 +388,7 @@ class DomainOrchestrator:
             )
 
         elif mode == "centroid":
-
+                
             similarity_mapping = self.observer.calculate_similarity_to_domains(
                 embedding=target_embedding,
                 domains=source_domains,  
@@ -376,21 +412,64 @@ class DomainOrchestrator:
             }
 
             merged_name = ""
+            conv_merged_name = ""
+            conv_weights = []
+            normal_weights = []
+            closest_names_normal = []
+            closest_names_conv = []
+            active_adapters_new = []
             for n, w in domain_weight_mapping.items():
-                merged_name += f"_{n}_{str(w).replace('.','_')}"
+                # merged_name += f"_{n}_{str(w).replace('.','_')}"
+                # import ipdb; ipdb.set_trace(context=10)
+                ##################################################
+                if "conv" in n:
+                    conv_merged_name += f"_{n}_{str(w).replace('.','_')}"
+                    conv_weights.append(w)
+                    closest_names_conv.append(n)
+                    active_adapters_new.append(n)
+                else:
+                    merged_name += f"_{n}_{str(w).replace('.','_')}"
+                    closest_names_normal.append(n)
+                    normal_weights.append(w)
+                    active_adapters_new.append(n)
+                ###################################################
             merged_name += f"_{combination_type}_{target_domain.name}" # Create a unique name for merged adapter so that it does not override existing adapters
+            conv_merged_name += f"_{combination_type}_{target_domain.name}" # Create a unique name for merged adapter so that it does not override existing adapters
+            # import ipdb; ipdb.set_trace(context=10)q
+
+            # import ipdb; ipdb.set_trace()
+            self._merge_adapters(
+                merge_domains=closest_names_conv,
+                weights=conv_weights,
+                merged_name=conv_merged_name,
+                combination_type=combination_type
+            )
 
             self._merge_adapters(
-                merge_domains=k_closest_names,
-                weights=weights,
+                merge_domains=closest_names_normal,
+                weights=normal_weights,
                 merged_name=merged_name,
                 combination_type=combination_type
             )
 
-        print(f"Setting {merged_name} as the active adapter.\n")
-        self.current_model.set_adapter(merged_name)
+        #############OG##############
+            # self._merge_adapters(
+            #     merge_domains=k_closest_names,
+            #     weights=weights,
+            #     merged_name=merged_name,
+            #     combination_type=combination_type
+            # )
 
-        return domain_weight_mapping, merged_name
+        print(f"Setting {merged_name} as the active adapter.\n")
+        ############## for vanilla mergeing##########
+        # self.current_model.set_adapter(merged_name)
+        ############## for conv mergeing##########
+        self.current_model.set_adapter(conv_merged_name)
+        # self.current_model.set_adapter(active_adapters_new)
+        # self.current_model.set_adapter(conv_merged_name)
+        # self.current_model.set_adapter(merged_name)
+
+        return domain_weight_mapping, merged_name, conv_merged_name
 
     def _merge_adapters(
         self,
@@ -404,16 +483,22 @@ class DomainOrchestrator:
         """
         
         print(f"Merging domains with weights:")
-        for n, w in zip(merge_domains, weights):
-            print(f"{n}: {w}", end=", ")
-        print("")
 
-        self.current_model.add_weighted_adapter(
-            merge_domains,
-            weights,
-            merged_name,
-            combination_type=combination_type,
-        )
+        # import ipdb; ipdb.set_trace(context=10)
+        if merge_domains:
+            for n, w in zip(merge_domains, weights):
+                print(f"{n}: {w}", end=", ")
+            print("")
+
+
+            # import ipdb; ipdb.set_trace(context=10)
+
+            self.current_model.add_weighted_adapter(
+                merge_domains,
+                weights,
+                merged_name,
+                combination_type=combination_type,
+            )
 
     def _calculate_adapter_weights(self, similarities:list[float], temperature: float) -> list[float]:
         """
@@ -518,7 +603,8 @@ class DomainOrchestrator:
         self,
         target_domains: list[str],
         remove_target_adapter: bool = False,
-        softmax_temperature: int | None = 0.05,
+        # softmax_temperature: int | None = 0.05,
+        softmax_temperature: int = 0.05,
         top_k: int = 5,  # number of domains to merge
         combination_type: str = "cat",
         similarity_measure: Callable[
@@ -553,48 +639,82 @@ class DomainOrchestrator:
 
             evaluator.reset()
 
-            with ExitStack() as stack:
-                if isinstance(model, nn.Module):
-                    stack.enter_context(inference_context(model))
-                stack.enter_context(torch.no_grad())
+            # with ExitStack() as stack:
+            #     if isinstance(model, nn.Module):
+            #         stack.enter_context(inference_context(model))
+            #     stack.enter_context(torch.no_grad())
 
-                for _, inputs in enumerate(data_loader):
+            #     for _, inputs in enumerate(data_loader):
 
-                    input_path = inputs[0]["file_name"]
+            #         input_path = inputs[0]["file_name"]
 
-                    print(f"Predicting image: {input_path}")
+            #         print(f"Predicting image: {input_path}")
 
-                    current_embedding = self.embedding_manager.embed_image(input_path)
+            #         current_embedding = self.embedding_manager.embed_image(input_path)
 
-                    weight_dict, merged_adpater_name = self._merge(
-                        target_domain=current_target_domain,
-                        remove_target_adapter=remove_target_adapter,
-                        mode="centroid", 
-                        target_embedding=current_embedding,
-                        softmax_temperature=softmax_temperature,
-                        top_k=top_k,
-                        combination_type=combination_type,
-                        similarity_measure=similarity_measure,
-                        sort_descending=sort_descending,
-                    )
+            #         weight_dict, merged_adpater_name, conv_mergeed_name = self._merge(
+            #             target_domain=current_target_domain,
+            #             remove_target_adapter=remove_target_adapter,
+            #             mode="centroid", 
+            #             target_embedding=current_embedding,
+            #             softmax_temperature=softmax_temperature,
+            #             top_k=top_k,
+            #             combination_type=combination_type,
+            #             similarity_measure=similarity_measure,
+            #             sort_descending=sort_descending,
+            #         )
 
+            #         for domain, weight in weight_dict.items():
+            #             weights.setdefault(domain, []).append(weight)
+
+            #         model = self.current_model
+
+            #         outputs = model(inputs)
+
+            #         if torch.cuda.is_available():
+            #             torch.cuda.synchronize()
+
+            #         if isinstance(evaluator, SemSegEvaluator):
+            #             _ = evaluator.process(inputs, outputs)
+            #         else:
+            #             _ = evaluator.process_image(inputs, outputs)
+
+            #         self.current_model.delete_adapter(merged_adpater_name)
+            #         self.current_model.delete_adapter(conv_mergeed_name)
+
+
+            for _, inputs in enumerate(data_loader):
+                input_path = inputs[0]["file_name"]
+                print(f"Predicting image: {input_path}")
+                current_embedding = self.embedding_manager.embed_image(input_path)
+                weight_dict, merged_adpater_name, conv_mergeed_name = self._merge(
+                    # ... merge parameters
+                )
+                
+                # Move ExitStack here
+                with ExitStack() as stack:
+                    if isinstance(model, nn.Module):
+                        stack.enter_context(inference_context(model))
+                    stack.enter_context(torch.no_grad())
+                    
                     for domain, weight in weight_dict.items():
                         weights.setdefault(domain, []).append(weight)
-
+                    
                     model = self.current_model
-
                     outputs = model(inputs)
-
+                    
                     if torch.cuda.is_available():
                         torch.cuda.synchronize()
-
+                    
                     if isinstance(evaluator, SemSegEvaluator):
                         _ = evaluator.process(inputs, outputs)
                     else:
                         _ = evaluator.process_image(inputs, outputs)
-
-                    self.current_model.delete_adapter(merged_adpater_name)
-
+                
+                self.current_model.delete_adapter(merged_adpater_name)
+                self.current_model.delete_adapter(conv_mergeed_name)
+                
+    
             print(f"Benchmarking on domain '{current_target_domain.name}' ...")
             result_dict = evaluator.evaluate()
             result = self._get_result_from_dict(result_dict)

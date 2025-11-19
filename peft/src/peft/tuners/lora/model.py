@@ -711,6 +711,7 @@ class LoraModel(BaseTuner):
 
         # Do we really need that?
         _freeze_adapter(self.model, adapter_name)
+        print(HYE)
 
         key_list = [key for key, _ in self.model.named_modules() if self.prefix not in key]
         for key in key_list:
@@ -740,6 +741,8 @@ class LoraModel(BaseTuner):
                             continue
                         loras_A.append(current_adapter_lora_A.data * weight * target.scaling[adapter])
                         loras_B.append(current_adapter_lora_B.data)
+
+                    import ipdb; ipdb.set_trace()
 
                     if len(loras_A) == 0:
                         raise ValueError("No matching LoRAs found. Please raise an issue on GitHub.")

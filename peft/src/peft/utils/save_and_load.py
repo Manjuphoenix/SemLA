@@ -391,13 +391,17 @@ def set_peft_model_state_dict(
             calling `inject_adapter_in_model` with `low_cpu_mem_usage=True`. Otherwise, leave it as `False`.
 
     """
+
     config = model.peft_config[adapter_name]
     state_dict = peft_model_state_dict
+    # print('state_dict---',state_dict.keys())
+    # print(hey)
 
     # handle auxiliary training wrappers such as ModulesToSaveWrapper and TrainableTokensWrapper by getting each of
     # them and translating saved state dict key (which does not include the adapter name) to loaded state dict key
     # (which includes the adapter name).
     for name, module in model.named_modules():
+        # print('name--',name)
         if isinstance(module, AuxiliaryTrainingWrapper):
             # Not every module has a 1:1 mapping. ModulesToSaveWrapper, for example, removes the
             # `modules_to_save.{adapter_name}.` prefix. This prefix must be restored when loading the model from the
@@ -415,6 +419,7 @@ def set_peft_model_state_dict(
 
                 # delete the old key from the previous `state_dict = peft_model_state_dict` statement.
                 del state_dict[lookup_key]
+    # print(hey)
 
     if config.is_prompt_learning or config.peft_type == PeftType.ADAPTION_PROMPT:
         peft_model_state_dict = state_dict

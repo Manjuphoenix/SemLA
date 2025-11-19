@@ -209,6 +209,9 @@ class BaseTuner(nn.Module, ABC):
                 self.peft_config.update(peft_config)
 
         self.active_adapter: str | list[str] = adapter_name
+
+        # print("__--____---____---__", adapter_name)     # acdc-fog
+        # print(OHOHI)
         self._pre_injection_hook(self.model, self.peft_config[adapter_name], adapter_name)
         if peft_config != PeftType.XLORA or peft_config[adapter_name] != PeftType.XLORA:
             self.inject_adapter(self.model, adapter_name, low_cpu_mem_usage=low_cpu_mem_usage, state_dict=state_dict)
@@ -224,6 +227,7 @@ class BaseTuner(nn.Module, ABC):
         return self.active_adapter
 
     def forward(self, *args: Any, **kwargs: Any):
+        print(HEWYOF)
         return self.model.forward(*args, **kwargs)
 
     def _pre_injection_hook(self, model: nn.Module, config: PeftConfig, adapter_name: str) -> None:
@@ -298,6 +302,7 @@ class BaseTuner(nn.Module, ABC):
         current_key: str,
         parameter_name: Optional[str] = None,
     ) -> None:
+        
         r"""
         Inplace replacement of the target module with the adapter layer. This method needs to be overridden by all the
         tuner classes.
@@ -445,6 +450,8 @@ class BaseTuner(nn.Module, ABC):
     ) -> None:
         raise NotImplementedError(f"{self.__class__.__name__} does not support targeting nn.Parameter.")
 
+
+#############################################################
     def inject_adapter(
         self,
         model: nn.Module,
@@ -453,6 +460,8 @@ class BaseTuner(nn.Module, ABC):
         low_cpu_mem_usage: bool = False,
         state_dict: Optional[dict[str, torch.Tensor]] = None,
     ) -> None:
+        
+
         r"""
         Creates adapter layers and replaces the target modules with the adapter layers. This method is called under the
         hood by `peft.mapping.get_peft_model` if a non-prompt tuning adapter class is passed.
@@ -501,6 +510,10 @@ class BaseTuner(nn.Module, ABC):
             )
 
         named_modules = list(model.named_modules())
+
+        # print("_-_____--_____--_____--", model)
+        # # print("_____---____---____", named_modules, "*******8888")
+        # print(WEOIJGOI)
         key_list = [key for key, _ in named_modules]
 
         uses_dummy_target_modules = getattr(peft_config, "target_modules", None) == DUMMY_TARGET_MODULES
@@ -511,7 +524,6 @@ class BaseTuner(nn.Module, ABC):
 
         # update peft_config.target_modules if required
         peft_config = _maybe_include_all_linear_layers(peft_config, model)
-
         # This is an optimization to reduce the number of entries in the target_modules list. The reason is that in some
         # circumstances, target_modules can contain hundreds of entries. Since each target module is checked against
         # each module of the net (which can be thousands), this can become quite expensive when many adapters are being
@@ -524,6 +536,9 @@ class BaseTuner(nn.Module, ABC):
         # We also exclude IA³ from this optimization. This is because IA³ has both target_modules and
         # feedforward_modules, which are coupled (the latter must be a subset). It would be possible to change the logic
         # to keep both in sync, but it's not quite trivial and probably not worth the effort. See #2429.
+
+        # print("_--____---___---____--__", model)
+        # print(OHOIHEOI)
         if (
             isinstance(peft_config.target_modules, (list, set))
             and (len(peft_config.target_modules) >= MIN_TARGET_MODULES_FOR_OPTIMIZATION)
@@ -538,6 +553,8 @@ class BaseTuner(nn.Module, ABC):
             if len(new_target_modules) < len(peft_config.target_modules):
                 peft_config.target_modules = new_target_modules
 
+        # print(new_target_modules, "___--____---____")
+        # print(OHI)
         ###############################
         # MATCHING & CREATING MODULES #
         ###############################
@@ -553,6 +570,11 @@ class BaseTuner(nn.Module, ABC):
             prefix = PEFT_TYPE_TO_PREFIX_MAPPING[peft_config.peft_type]
             module_names = {k.rsplit("." + prefix, 1)[0] for k in state_dict}
 
+
+        # print("_-_____---___----____--", model)
+        # print(OIHWOIHEOIWWW)
+
+        ############# MODEL DOESNT have LoRA modules loaded here............
         for key, module in named_modules:
             if not key:
                 continue
@@ -563,13 +585,19 @@ class BaseTuner(nn.Module, ABC):
                 if key.startswith(adapter_key + "."):
                     excluded_modules.append(key)
                     break
-
+            
+            # print("____---___---____--__", excluded_modules)        # Empty list
+            # print(QOOIGWHEIOH)
             if excluded_modules and excluded_modules[-1] == key:
                 continue
 
             if state_dict is None:
                 # normal mechanism: match the modules using the peft_config
                 result = self._check_target_module_exists(peft_config, key)
+
+                # print("_-_____--____--_", result, "-)_#)_T_)#")     # Returns False
+                # print(OHWOIEHTOIE)
+
                 if isinstance(result, _ExcludedModule):
                     excluded_modules.append(key)
                 elif not result:
@@ -577,7 +605,18 @@ class BaseTuner(nn.Module, ABC):
                 else:
                     self.targeted_module_names.append(key)
                     parent, target, target_name = _get_submodules(model, key)
-                    self._check_target_module_compatiblity(peft_config, model, target_name)
+                    
+                    """
+                    print(parent, "_-------____---___", target, "_-------____---___", target_name, "___---____---____--_____--___")
+                    Attention(
+                    (out_proj): NonDynamicallyQuantizableLinear(in_features=1024, out_features=1024, bias=True)
+                    (q_proj): Linear(in_features=1024, out_features=1024, bias=False)
+                    (k_proj): Linear(in_features=1024, out_features=1024, bias=False)
+                    (v_proj): Linear(in_features=1024, out_features=1024, bias=False)
+                    ) _-------____---___ Linear(in_features=1024, out_features=1024, bias=False) _-------____---___ q_proj ___---____---____--_____--___
+                    """
+                    # print(HEY)
+                    self._check_target_module_compatiblity(peft_config, model, target_name)     # This returns none
                     ctx = init_empty_weights if low_cpu_mem_usage else nullcontext
                     with ctx():
                         self._create_and_replace(
@@ -600,6 +639,8 @@ class BaseTuner(nn.Module, ABC):
                 # still record what would have been matched via the config so that the two results can be compared
                 if self._check_target_module_exists(peft_config, key):
                     targeted_modules_from_peft_config.append(key)
+            # print("_---____----__----___0", model)
+        # print(OIWEOIHT)
 
         if getattr(peft_config, "target_parameters", []):
             # Note: We don't need to check for no state_dict being passed, since we already checked this earlier.
@@ -607,6 +648,8 @@ class BaseTuner(nn.Module, ABC):
                 peft_config=peft_config, model=model, adapter_name=adapter_name, low_cpu_mem_usage=low_cpu_mem_usage
             )
 
+
+        #################### model has LoRA loaded here.....................
         ####################
         # CHECK FOR ERRORS #
         ####################
@@ -709,6 +752,9 @@ class BaseTuner(nn.Module, ABC):
         # It's important to set the adapter here (again), because otherwise it can happen that if a 2nd adapter is
         # added, and it targets different layer(s) than the first adapter (which is active), then those different
         # layers will be activated, which we don't want.
+
+        # print("---____----___--___", model)
+        # print(OIHOIHGEHEGWE)
         self.set_adapter(self.active_adapters)
         self._mark_only_adapters_as_trainable(model)
 
@@ -1330,6 +1376,7 @@ def _maybe_include_all_linear_layers(peft_config: PeftConfig, model: nn.Module) 
     Helper function to update `target_modules` to all linear/Conv1D layers if provided as 'all-linear'. Adapted from
     the QLoRA repository: https://github.com/artidoro/qlora/blob/main/qlora.py
     """
+    # print(HHEY)
     if not hasattr(peft_config, "target_modules"):
         return peft_config
 

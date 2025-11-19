@@ -91,8 +91,18 @@ src/peft/tuners/lora/eva.py
 src/peft/tuners/lora/gptq.py
 src/peft/tuners/lora/hqq.py
 src/peft/tuners/lora/inc.py
+src/peft/tuners/lora/layer copy.py
+src/peft/tuners/lora/layer-no-thresh-only-merge-backup.py
 src/peft/tuners/lora/layer.py
+src/peft/tuners/lora/layer_1.py
+src/peft/tuners/lora/layer_dont.py
+src/peft/tuners/lora/layer_ori.py
+src/peft/tuners/lora/layer_overthinking_code.py
+src/peft/tuners/lora/layer_peft_original.py
+src/peft/tuners/lora/model copy.py
+src/peft/tuners/lora/model-no-thresh-only-merge-backup.py
 src/peft/tuners/lora/model.py
+src/peft/tuners/lora/model_overthinking_flop_code.py
 src/peft/tuners/lora/torchao.py
 src/peft/tuners/lora/tp_layer.py
 src/peft/tuners/lora/variants.py

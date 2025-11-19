@@ -22,6 +22,8 @@ import numpy as np
 import torch
 import random
 
+from torch.nn.parallel import DistributedDataParallel as DPP
+
 from detectron2.projects.deeplab import add_deeplab_config, build_lr_scheduler
 from detectron2.utils.comm import all_gather, is_main_process, synchronize
 
@@ -116,7 +118,9 @@ def create_ddp_model(model, *, fp16_compression=False, **kwargs):
         return model
     if "device_ids" not in kwargs:
         kwargs["device_ids"] = [comm.get_local_rank()]
-    ddp = torch.nn.DistributedDataParallel(model, **kwargs)
+    # ddp = torch.nn.DistributedDataParallel(model, **kwargs)  - original
+    ddp = DPP(model, **kwargs)
+
     if fp16_compression:
         from torch.distributed.algorithms.ddp_comm_hooks import default as comm_hooks
 
@@ -782,7 +786,7 @@ class Trainer(DefaultTrainer):
         params: List[Dict[str, Any]] = []
         memo: Set[torch.nn.parameter.Parameter] = set()
         # import ipdb;
-        # ipdb.set_trace()
+        # ipdb.set_trace(context=10)
         for module_name, module in model.named_modules():
             for module_param_name, value in module.named_parameters(recurse=False):
                 if not value.requires_grad:
@@ -910,6 +914,77 @@ def setup(args):
     return cfg
 
 
+# def main(args):
+
+#     cfg = setup(args)
+#     set_random_seed(cfg.SEED)
+#     wandb.init(mode="offline", sync_tensorboard=True, name= cfg.MODEL.LORA.NAME)
+#     torch.set_float32_matmul_precision("high")
+
+#     if args.eval_only:
+#         model = Trainer.build_model(cfg)
+
+#         DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
+#             cfg.MODEL.WEIGHTS, resume=args.resume
+#         )
+
+#         # Load lora from lora db and attach to base model
+#         if cfg.MODEL.LORA.ENABLED:
+#             load_lora(cfg, model)
+
+#         res = Trainer.test(cfg, model)
+        
+#         if cfg.TEST.AUG.ENABLED:
+#             res.update(Trainer.test_with_TTA(cfg, model))
+#         if comm.is_main_process():
+#             verify_results(cfg, res)
+#         print("And the results is: ...")
+#         print(res)
+#         return res
+
+#     trainer = Trainer(cfg)
+#     trainer.resume_or_load(resume=args.resume)
+
+#     # Add lora to the base model, reset the necessary model confgis/parameters to train lora
+#     if cfg.MODEL.LORA.ENABLED:
+#         peft_model = add_lora(cfg, trainer.model)
+#         trainer.reset_trainer(cfg, peft_model)
+#         # Attaching LoRAs changes the modules to which hooks are set, we need to reset
+#         # trainer.model.base_model.model.reset_forward_hooks()
+
+#         # print("__----____--TRAINER MODEL-____--____-", trainer.model, '-__-----_____----')
+#         # print(HEY)
+#         # trainer.model.print_trainable_parameters()
+
+
+#         ddp_model = trainer.model.module.base_model  # unwrap
+#         for m in ddp_model.modules():
+#             m._forward_hooks.clear()
+#         # trainer.model.base_model.model.reset_forward_hooks()
+#         trainer.model.module.print_trainable_parameters()
+
+#     output = trainer.train()
+#     trainer.model.print_trainable_parameters()
+
+#     # Save only the LoRA weights to LoRA DB
+#     if cfg.MODEL.LORA.ENABLED == True:
+#         trainer.model.save_pretrained(cfg.MODEL.LORA.DB_PATH)
+        
+
+#     return output
+
+# if __name__ == "__main__":
+#     args = default_argument_parser().parse_args()
+#     print("Command Line Args:", args)
+#     launch(
+#         main,
+#         args.num_gpus,
+#         num_machines=args.num_machines,
+#         machine_rank=args.machine_rank,
+#         dist_url=args.dist_url,
+#         args=(args,),
+#     )
+
 def main(args):
 
     cfg = setup(args)
@@ -947,9 +1022,11 @@ def main(args):
         trainer.reset_trainer(cfg, peft_model)
         # Attaching LoRAs changes the modules to which hooks are set, we need to reset
         trainer.model.base_model.model.reset_forward_hooks()
+        # trainer.resume_or_load(resume=args.resume)
+        
         trainer.model.print_trainable_parameters()
-
     output = trainer.train()
+    # trainer.model.print_trainable_parameters()
 
     # Save only the LoRA weights to LoRA DB
     if cfg.MODEL.LORA.ENABLED == True:

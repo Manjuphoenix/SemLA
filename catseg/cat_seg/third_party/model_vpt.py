@@ -213,8 +213,10 @@ class ResidualAttentionBlock(nn.Module):
         return self.attn(x, x, x, need_weights=False, attn_mask=self.attn_mask)[0]
 
     def forward(self, x: torch.Tensor, prompt=None):
+        # print("-__---__-Before attention and passing to the LoRA---__----__", x.shape)
         x = x + self.attention(self.ln_1(x))
         x = x + self.mlp(self.ln_2(x))
+        # print("-__---__After MLPs probably after the LoRA feature shape....__", x.shape)
         if prompt is not None:
             x = torch.cat((x[0:1, :, :], x[prompt + 1: :, :]), dim=0)
         return x
@@ -261,7 +263,14 @@ class Transformer(nn.Module):
             nn.init.xavier_uniform_(self.prompt_tokens)
 
     def forward(self, x: torch.Tensor, dense=False, prompt=None):
+        # print(x.shape, "__________--------input for transformer shape")     #torch.Size([77, 1, 768])
+        # print(HEY)
+        # There will be x1, x2 and x3 each of them for different scales of the same image..
+
         for i, resblock in enumerate(self.resblocks):
+            # print("_--_____---___--__---____", resblock, "*88***888****88****888")
+            # print(OWHTIOEHG)
+
             if self.prompt_length > 0 and i < self.prompt_depth:
                 x = torch.cat((x[0:1, :, :], self.prompt_tokens[i].repeat(x.shape[1], 1, 1).permute(1, 0, 2) ,x[1:, :, :]))
             
@@ -269,6 +278,10 @@ class Transformer(nn.Module):
                 x = resblock.forward_dense(x, self.prompt_length)    
             else:
                 x = resblock(x, self.prompt_length)
+            # print(x.shape, "______-----Transformer shape.....")
+            # The above print statement gives only one of the following:
+            # torch.size([77,19,768]) or torch.size([577,2,1024])
+        # x = [x] + ["HEY"]
             
         return x
 
@@ -292,21 +305,38 @@ class VisualTransformer(nn.Module):
         self.patch_size = patch_size
         self.input_resolution = input_resolution
 
+
+########################### OG #########################
     def forward(self, x: torch.Tensor, dense=False):
+
+        ############### dense is true only for clip image encoder... as specified while calling....
         x = self.conv1(x)  # shape = [*, width, grid, grid]
+
+        # print("_--____----_____x shape", x.shape)       #([2, 1024, 24, 24])
+        # print(JEY)
         x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [*, width, grid ** 2]
+
+        # print("_-____---______x shape", x.shape)        #([2, 1024, 576])
+        # print(HEY)
         x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
         x = torch.cat([self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device), x], dim=1)  # shape = [*, grid ** 2 + 1, width]
-        
+        # print("_-____---______x shape", x.shape)        #([2, 577, 1024])
+        # print(HEY)
         if dense and (x.shape[1] != self.positional_embedding.shape[0]):
             x = x + self.resized_pos_embed(self.input_resolution, x.shape[1]).to(x.dtype)
         else:
             x = x + self.positional_embedding.to(x.dtype)
+        
 
+        # print("_-____---______x shape", x.shape)        #([2, 577, 1024])
+        # print(HEY)
         x = self.ln_pre(x)
-
+        # print("_-____---______x shape", x.shape)        #([2, 577, 1024])
+        # print(HEY)
         x = x.permute(1, 0, 2)  # NLD -> LND
         x = self.transformer(x, dense)
+        # print("_-____---______x shape", x.shape)        #([577, 2, 1024])
+        # print(HEY)
         x = x.permute(1, 0, 2)  # LND -> NLD
 
         if dense:
@@ -318,6 +348,190 @@ class VisualTransformer(nn.Module):
             x = x @ self.proj
         
         return x
+    
+######################### BRUTE-FORCE #################################################
+    # def forward(self, x: torch.Tensor, dense=False):
+    #     # print(x.shape, "-----VIT Visual transformer input features shape.....")       #torch.Size([2, 3, 336, 336])
+    #     scaled_up_x = F.interpolate(
+    #         x, 
+    #         scale_factor=1.5, 
+    #         mode='bilinear', 
+    #         align_corners=False
+    #     )
+
+    #     scaled_up_x1 = F.interpolate(
+    #         x, 
+    #         scale_factor=0.5, 
+    #         mode='bilinear', 
+    #         align_corners=False
+    #     )
+
+    #     scaled_down_x = F.interpolate(
+    #     x, 
+    #     scale_factor=0.5, 
+    #     mode='bilinear', 
+    #     align_corners=False
+    #     )
+                
+    #     x = self.conv1(x)  # shape = [*, width, grid, grid]
+    #     x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [*, width, grid ** 2]
+    #     x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
+    #     x = torch.cat([self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device), x], dim=1)  # shape = [*, grid ** 2 + 1, width]
+        
+    #     if dense and (x.shape[1] != self.positional_embedding.shape[0]):
+    #         x = x + self.resized_pos_embed(self.input_resolution, x.shape[1]).to(x.dtype)
+    #     else:
+    #         x = x + self.positional_embedding.to(x.dtype)
+
+    #     x = self.ln_pre(x)
+
+    #     x = x.permute(1, 0, 2)  # NLD -> LND
+    #     x = self.transformer(x, dense)
+    #     x = x.permute(1, 0, 2)  # LND -> NLD
+    #     print("---After transformer of ViT----", x.shape)       #torch.Size([2, 577, 1024]) which is fixed....
+    #     # print(HET)
+
+    #     if dense:
+    #         x = self.ln_post(x[:, :, :])
+    #     else:
+    #         x = self.ln_post(x[:, 0, :])
+
+    #     if self.proj is not None:
+    #         x = x @ self.proj
+
+
+    #     scaled_up_x = self.conv1(scaled_up_x)  # shape = [*, width, grid, grid]
+    #     scaled_up_x = scaled_up_x.reshape(scaled_up_x.shape[0], scaled_up_x.shape[1], -1)  # shape = [*, width, grid ** 2]
+    #     scaled_up_x = scaled_up_x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
+    #     scaled_up_x = torch.cat([self.class_embedding.to(scaled_up_x.dtype) + torch.zeros(scaled_up_x.shape[0], 1, scaled_up_x.shape[-1], dtype=scaled_up_x.dtype, device=scaled_up_x.device), scaled_up_x], dim=1)  # shape = [*, grid ** 2 + 1, width]
+        
+    #     if dense and (scaled_up_x.shape[1] != self.positional_embedding.shape[0]):
+    #         scaled_up_x = scaled_up_x + self.resized_pos_embed(self.input_resolution, scaled_up_x.shape[1]).to(scaled_up_x.dtype)
+    #     else:
+    #         scaled_up_x = scaled_up_x + self.positional_embedding.to(scaled_up_x.dtype)
+
+    #     scaled_up_x = self.ln_pre(scaled_up_x)
+
+    #     scaled_up_x = scaled_up_x.permute(1, 0, 2)  # NLD -> LND
+    #     scaled_up_x = self.transformer(scaled_up_x, dense)
+    #     scaled_up_x = scaled_up_x.permute(1, 0, 2)  # LND -> NLD
+    #     print("---After transformer of ViT----", scaled_up_x.shape)       #torch.Size([2, 577, 1024]) which is fixed....
+    #     # print(HET)
+
+    #     if dense:
+    #         scaled_up_x = self.ln_post(scaled_up_x[:, :, :])
+    #     else:
+    #         scaled_up_x = self.ln_post(scaled_up_x[:, 0, :])
+
+    #     if self.proj is not None:
+    #         scaled_up_x = scaled_up_x @ self.proj
+
+
+    #     scaled_up_x1 = self.conv1(scaled_up_x1)  # shape = [*, width, grid, grid]
+    #     scaled_up_x1 = scaled_up_x1.reshape(scaled_up_x1.shape[0], scaled_up_x1.shape[1], -1)  # shape = [*, width, grid ** 2]
+    #     scaled_up_x1 = scaled_up_x1.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
+    #     scaled_up_x1 = torch.cat([self.class_embedding.to(scaled_up_x1.dtype) + torch.zeros(scaled_up_x1.shape[0], 1, scaled_up_x1.shape[-1], dtype=scaled_up_x1.dtype, device=scaled_up_x1.device), scaled_up_x1], dim=1)  # shape = [*, grid ** 2 + 1, width]
+        
+    #     if dense and (scaled_up_x1.shape[1] != self.positional_embedding.shape[0]):
+    #         scaled_up_x1 = scaled_up_x1 + self.resized_pos_embed(self.input_resolution, scaled_up_x1.shape[1]).to(scaled_up_x1.dtype)
+    #     else:
+    #         scaled_up_x1 = scaled_up_x1 + self.positional_embedding.to(scaled_up_x1.dtype)
+
+    #     scaled_up_x1 = self.ln_pre(scaled_up_x1)
+
+    #     scaled_up_x1 = scaled_up_x1.permute(1, 0, 2)  # NLD -> LND
+    #     scaled_up_x1 = self.transformer(scaled_up_x1, dense)
+    #     scaled_up_x1 = scaled_up_x1.permute(1, 0, 2)  # LND -> NLD
+    #     print("---After transformer of ViT----", scaled_up_x1.shape)       #torch.Size([2, 577, 1024]) which is fixed....
+    #     # print(HET)
+
+    #     if dense:
+    #         scaled_up_x1 = self.ln_post(scaled_up_x1[:, :, :])
+    #     else:
+    #         scaled_up_x1 = self.ln_post(scaled_up_x1[:, 0, :])
+
+    #     if self.proj is not None:
+    #         scaled_up_x1 = scaled_up_x1 @ self.proj
+
+
+    #     scaled_up_x = {"s1": x, "s2": scaled_up_x, "s3": scaled_up_x1}       # Dictionary of scaled features....
+        
+    #     # return x
+    #     return scaled_up_x
+    
+
+##################################################################################
+
+
+    # def forward(self, x: torch.Tensor, dense=False):
+    # # print(x.shape, "-----VIT Visual transformer input features shape.....")       #torch.Size([2, 3, 336, 336])
+    
+    #     def process_scale(input_tensor, scale_name):
+    #         """Process a single scale through the ViT pipeline"""
+    #         # Convolutional embedding
+    #         processed = self.conv1(input_tensor)  # shape = [*, width, grid, grid]
+    #         processed = processed.reshape(processed.shape[0], processed.shape[1], -1)  # shape = [*, width, grid ** 2]
+    #         processed = processed.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
+            
+    #         # Add class token
+    #         class_tokens = self.class_embedding.to(processed.dtype) + torch.zeros(
+    #             processed.shape[0], 1, processed.shape[-1], 
+    #             dtype=processed.dtype, device=processed.device
+    #         )
+    #         processed = torch.cat([class_tokens, processed], dim=1)  # shape = [*, grid ** 2 + 1, width]
+            
+    #         # Add positional embedding
+    #         if dense and (processed.shape[1] != self.positional_embedding.shape[0]):
+    #             processed = processed + self.resized_pos_embed(self.input_resolution, processed.shape[1]).to(processed.dtype)
+    #         else:
+    #             processed = processed + self.positional_embedding.to(processed.dtype)
+            
+    #         # Pre-transformer layer norm
+    #         processed = self.ln_pre(processed)
+            
+    #         # Transformer processing
+    #         processed = processed.permute(1, 0, 2)  # NLD -> LND
+    #         processed = self.transformer(processed, dense)
+    #         processed = processed.permute(1, 0, 2)  # LND -> NLD
+    #         print(f"---After transformer of ViT ({scale_name})----", processed.shape)  # torch.Size([2, 577, 1024])
+            
+    #         # Post-transformer processing
+    #         if dense:
+    #             processed = self.ln_post(processed[:, :, :])
+    #         else:
+    #             processed = self.ln_post(processed[:, 0, :])
+            
+    #         # Final projection
+    #         if self.proj is not None:
+    #             processed = processed @ self.proj
+                
+    #         return processed
+        
+    #     # Define scales and their transformations
+    #     scales_config = {
+    #         "s1": {"input": x, "scale_factor": None},  # Original scale
+    #         "s2": {"input": None, "scale_factor": 1.5},  # Scaled up by 1.5x
+    #         "s3": {"input": None, "scale_factor": 0.5}   # Scaled down by 0.5x
+    #     }
+        
+    #     # Apply scaling transformations
+    #     for scale_name, config in scales_config.items():
+    #         if config["scale_factor"] is not None:
+    #             config["input"] = F.interpolate(
+    #                 x, 
+    #                 scale_factor=config["scale_factor"], 
+    #                 mode='bilinear', 
+    #                 align_corners=False
+    #             )
+        
+    #     # Process each scale through the ViT pipeline
+    #     multi_scale_features = {}
+    #     for scale_name, config in scales_config.items():
+    #         multi_scale_features[scale_name] = process_scale(config["input"], scale_name)
+        
+    #     return multi_scale_features
+
+######################################################################################################
 
     def resized_pos_embed(self, in_res, tgt_res, mode="bicubic"):
         #assert L == (input_resolution // self.patch_size) ** 2 + 1
