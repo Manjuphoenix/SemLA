@@ -1,0 +1,17 @@
+__pycache__/
+.venv/
+wandb/
+catseg/loradb/
+catseg/loradb_/
+catseg/loradb_20.85_indraeye/
+catseg/loradb-copied/
+catseg/loradb_duplicate/
+catseg/loradb_run1_wrong/
+catseg/acdc-rain-5k/
+catseg/IE_Seg_pred_lora/
+catseg/wandb/
+catseg/datasets/
+catseg/output/
+catseg/models/
+catseg/msrs_rgb_40k_ckpt/
+results/

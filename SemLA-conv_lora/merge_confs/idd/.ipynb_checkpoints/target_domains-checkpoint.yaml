@@ -1,0 +1,20 @@
+# - IE_Segmentation
+# - acdc-rain
+# - acdc-snow
+# - acdc-fog
+# - acdc-night
+# - muses-clear-day
+# - muses-clear-night
+# - muses-snow-day
+# - muses-snow-night
+# - muses-fog-day
+# - muses-fog-night
+# - muses-rain-day
+# - muses-rain-night
+- idd_conv
+# - bdd
+# - cs-normal
+# - mv
+# - openearth
+# - cartr
+# - msrs
