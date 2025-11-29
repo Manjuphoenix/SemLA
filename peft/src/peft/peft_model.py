@@ -1354,6 +1354,10 @@ class PeftModel(PushToHubMixin, torch.nn.Module):
             model_id, device=torch_device, key_mapping=key_mapping, **hf_hub_download_kwargs
         )
 
+
+
+        # import ipdb; ipdb.set_trace()
+
         # load the weights into the model
         ignore_mismatched_sizes = kwargs.get("ignore_mismatched_sizes", False)
         load_result = set_peft_model_state_dict(
@@ -1364,14 +1368,17 @@ class PeftModel(PushToHubMixin, torch.nn.Module):
             low_cpu_mem_usage=low_cpu_mem_usage,
         )
 
+
         tuner = self.peft_config[adapter_name].peft_type
         tuner_prefix = PEFT_TYPE_TO_PREFIX_MAPPING.get(tuner, "")
         adapter_missing_keys = []
 
         # Filter missing keys specific to the current adapter and tuner prefix.
         for key in load_result.missing_keys:
-            if tuner_prefix in key and adapter_name in key:
+            if (tuner_prefix in key) or ("conv1" in key) and adapter_name in key:
                 adapter_missing_keys.append(key)
+
+        
 
         load_result.missing_keys.clear()
         load_result.missing_keys.extend(adapter_missing_keys)

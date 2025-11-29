@@ -8,6 +8,10 @@ from typing import Dict, List, Callable, Any, Optional, Tuple
 
 from domain_orchestrator.domain_orchestrator import DomainOrchestrator
 
+import cProfile
+import pstats
+
+
 # Define distance measure mappings
 NAME_MEASURE_MAPPING = {
     "euclidean": lambda u, v: 1. / scipy.spatial.distance.euclidean(u.squeeze(), v.squeeze()),
@@ -78,6 +82,7 @@ def semla_merge(source_domains: List[str], target_domains: List[str],
     combination_type = config.get("combination_type", "cat")
     
     orchestrator = DomainOrchestrator(source_domains)
+    # import ipdb; ipdb.set_trace()
     results, weights = orchestrator.benchmark_semla(
         target_domains=target_domains,
         remove_target_adapter=remove_target_adapter,
@@ -87,6 +92,8 @@ def semla_merge(source_domains: List[str], target_domains: List[str],
         combination_type=combination_type
     )
     save_results(results, weights, output_dir=output_dir)
+
+
 
 def parse_args():
     """Parse command line arguments."""
@@ -114,6 +121,7 @@ def parse_args():
 def main():
     """Main function to run experiments based on command line arguments."""
 
+
     args = parse_args()
     
     # Load source domains
@@ -136,4 +144,9 @@ def main():
         semla_merge(source_domains, target_domains, semla_config, args.remove_target_adapter, args.output_dir)
 
 if __name__ == "__main__":
+
+    # with cProfile.Profile() as pr:
     main()
+
+    # stats = pstats.Stats(pr)
+    # stats.sort_stats("cumulative").print_stats()

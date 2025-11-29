@@ -327,7 +327,7 @@ class LoraModel(BaseTuner):
             # print('p---------',p)
             # print('p---------',self.prefix)
             # if self.prefix not in n:        #### Original command.
-            if (self.prefix not in n) and (".conv1." not in n):
+            if (self.prefix not in n) and ("conv1" not in n):
                 p.requires_grad = False
                 # print('n--11111222-------',n)
 
@@ -846,6 +846,161 @@ class LoraModel(BaseTuner):
 
         return combination_type, new_rank, new_target_modules
 
+    # def add_weighted_adapter(
+    #     self,
+    #     adapters: list[str],
+    #     weights: list[float],
+    #     adapter_name: str,
+    #     combination_type: str = "svd",
+    #     svd_rank: int | None = None,
+    #     svd_clamp: int | None = None,
+    #     svd_full_matrices: bool = True,
+    #     svd_driver: str | None = None,
+    #     density: float | None = None,
+    #     majority_sign_method: Literal["total", "frequency"] = "total",
+    # ) -> None:
+    #     ######## Called when running SEMLA setting of TTA #######################
+    #     # print(add_weighted_adapter)
+    #     """
+    #     This method adds a new adapter by merging the given adapters with the given weights.
+
+    #     When using the `cat` combination_type you should be aware that rank of the resulting adapter will be equal to
+    #     the sum of all adapters ranks. So it's possible that the mixed adapter may become too big and result in OOM
+    #     errors.
+
+    #     Args:
+    #         adapters (`list`):
+    #             List of adapter names to be merged.
+    #         weights (`list`):
+    #             List of weights for each adapter.
+    #         adapter_name (`str`):
+    #             Name of the new adapter.
+    #         combination_type (`str`):
+    #             The merging type can be one of [`svd`, `linear`, `cat`, `ties`, `ties_svd`, `dare_ties`, `dare_linear`,
+    #             `dare_ties_svd`, `dare_linear_svd`, `magnitude_prune`, `magnitude_prune_svd`]. When using the `cat`
+    #             combination_type, the rank of the resulting adapter is equal to the sum of all adapters ranks (the
+    #             mixed adapter may be too big and result in OOM errors).
+    #         svd_rank (`int`, *optional*):
+    #             Rank of output adapter for svd. If None provided, will use max rank of merging adapters.
+    #         svd_clamp (`float`, *optional*):
+    #             A quantile threshold for clamping SVD decomposition output. If None is provided, do not perform
+    #             clamping. Defaults to None.
+    #         svd_full_matrices (`bool`, *optional*):
+    #             Controls whether to compute the full or reduced SVD, and consequently, the shape of the returned
+    #             tensors U and Vh. Defaults to True.
+    #         svd_driver (`str`, *optional*):
+    #             Name of the cuSOLVER method to be used. This keyword argument only works when merging on CUDA. Can be
+    #             one of [None, `gesvd`, `gesvdj`, `gesvda`]. For more info please refer to `torch.linalg.svd`
+    #             documentation. Defaults to None.
+    #         density (`float`, *optional*):
+    #             Value between 0 and 1. 0 means all values are pruned and 1 means no values are pruned. Should be used
+    #             with [`ties`, `ties_svd`, `dare_ties`, `dare_linear`, `dare_ties_svd`, `dare_linear_svd`,
+    #             `magnintude_prune`, `magnitude_prune_svd`]
+    #         majority_sign_method (`str`):
+    #             The method, should be one of ["total", "frequency"], to use to get the magnitude of the sign values.
+    #             Should be used with [`ties`, `ties_svd`, `dare_ties`, `dare_ties_svd`]
+    #     """
+
+    #     if adapter_name in list(self.peft_config.keys()):
+    #         return
+
+    #     combination_type, new_rank, new_target_modules = self._check_add_weighted_adapter(
+    #         adapters=adapters,
+    #         combination_type=combination_type,
+    #         svd_rank=svd_rank,
+    #     )
+
+    #     self.peft_config[adapter_name] = replace(
+    #         self.peft_config[adapters[0]],
+    #         r=new_rank,
+    #         lora_alpha=new_rank,
+    #         target_modules=new_target_modules,
+    #         alpha_pattern={},
+    #         rank_pattern={},
+    #     )
+    #     self.inject_adapter(self.model, adapter_name)
+
+    #     # Do we really need that?
+    #     _freeze_adapter(self.model, adapter_name)
+
+    #     key_list = [key for key, _ in self.model.named_modules() if self.prefix not in key]
+    #     for key in key_list:
+    #         _, target, _ = _get_submodules(self.model, key)
+    #         if isinstance(target, LoraLayer):
+    #             if adapter_name in target.lora_A:
+    #                 target_lora_A = target.lora_A[adapter_name].weight
+    #                 print('target_lora_A----',target)
+    #                 # print('target_lora_A----',target_lora_A.shape)
+    #                 target_lora_B = target.lora_B[adapter_name].weight
+    #                 # print('target_lora_B----',target_lora_B.shape)
+    #             elif adapter_name in target.lora_embedding_A:
+    #                 target_lora_A = target.lora_embedding_A[adapter_name]
+    #                 target_lora_B = target.lora_embedding_B[adapter_name]
+    #             else:
+    #                 continue
+
+    #             target_lora_A.data = target_lora_A.data * 0.0
+    #             target_lora_B.data = target_lora_B.data * 0.0
+    #             if combination_type == "cat":
+    #                 loras_A, loras_B = [], []
+    #                 for adapter, weight in zip(adapters, weights):
+    #                     # print('weights---',weights)
+    #                     if adapter in target.lora_A:
+    #                         current_adapter_lora_A = target.lora_A[adapter].weight
+    #                         # print('current_adapter_lora_A----',current_adapter_lora_A.shape)
+    #                         current_adapter_lora_B = target.lora_B[adapter].weight
+    #                     elif adapter in target.lora_embedding_A:
+    #                         current_adapter_lora_A = target.lora_embedding_A[adapter]
+    #                         current_adapter_lora_B = target.lora_embedding_B[adapter]
+    #                     else:
+    #                         continue
+    #                     loras_A.append(current_adapter_lora_A.data * weight * target.scaling[adapter])
+    #                     loras_B.append(current_adapter_lora_B.data)
+
+    #                 # print('loras_A',loras_A[0].shape)
+    #                 # print(hey)
+
+    #                 if len(loras_A) == 0:
+    #                     raise ValueError("No matching LoRAs found. Please raise an issue on GitHub.")
+    #                 loras_A = torch.cat(loras_A, dim=0)
+    #                 loras_B = torch.cat(loras_B, dim=1)
+
+    #                 # print('loras_A--',loras_A.shape)
+    #                 # print('loras_B--',loras_B.shape)
+
+    #                 target_lora_A.data[: loras_A.shape[0], :] = loras_A
+    #                 target_lora_B.data[:, : loras_B.shape[1]] = loras_B
+    #                 # print('target_lora_A--',target_lora_A.shape)
+    #             elif combination_type in [
+    #                 "svd",
+    #                 "ties_svd",
+    #                 "dare_linear_svd",
+    #                 "dare_ties_svd",
+    #                 "magnitude_prune_svd",
+    #             ]:
+    #                 target_lora_A.data, target_lora_B.data = self._svd_generalized_task_arithmetic_weighted_adapter(
+    #                     combination_type,
+    #                     adapters,
+    #                     weights,
+    #                     new_rank,
+    #                     target,
+    #                     target_lora_A,
+    #                     target_lora_B,
+    #                     density,
+    #                     majority_sign_method,
+    #                     svd_clamp,
+    #                     full_matrices=svd_full_matrices,
+    #                     driver=svd_driver,
+    #                 )
+    #             elif combination_type in ["linear", "ties", "dare_linear", "dare_ties", "magnitude_prune"]:
+    #                 target_lora_A.data, target_lora_B.data = self._generalized_task_arithmetic_weighted_adapter(
+    #                     combination_type, adapters, weights, target, density, majority_sign_method
+    #                 )
+    #             # print('target_lora_A--',target_lora_A)
+    #             # print(hey)
+
+
+
     def add_weighted_adapter(
         self,
         adapters: list[str],
@@ -917,59 +1072,97 @@ class LoraModel(BaseTuner):
             target_modules=new_target_modules,
             alpha_pattern={},
             rank_pattern={},
+            
         )
+
+
         self.inject_adapter(self.model, adapter_name)
 
         # Do we really need that?
         _freeze_adapter(self.model, adapter_name)
 
-        key_list = [key for key, _ in self.model.named_modules() if self.prefix not in key]
+        key_list = [key for key, _ in self.model.named_modules() if (self.prefix not in key) and ("conv1" not in key)]
+        
         for key in key_list:
             _, target, _ = _get_submodules(self.model, key)
+
             if isinstance(target, LoraLayer):
-                if adapter_name in target.lora_A:
+                # if key == "sem_seg_head.predictor.clip_model.transformer.resblocks.0.attn.k_proj":
+                #     import ipdb; ipdb.set_trace()
+                if adapter_name in target.lora_A and adapter_name in target.conv1:
+                    # import ipdb; ipdb.set_trace()
                     target_lora_A = target.lora_A[adapter_name].weight
-                    print('target_lora_A----',target)
+                    # print('target_lora_A----',target)
                     # print('target_lora_A----',target_lora_A.shape)
                     target_lora_B = target.lora_B[adapter_name].weight
+                    target_conv1 = target.conv1[adapter_name].weight
+                    # target_lora_conv1 = target_lora_conv1.data * 0.0
                     # print('target_lora_B----',target_lora_B.shape)
                 elif adapter_name in target.lora_embedding_A:
+                    print(HEY)
                     target_lora_A = target.lora_embedding_A[adapter_name]
                     target_lora_B = target.lora_embedding_B[adapter_name]
+                # elif adapter_name in target.conv1:
+                #     import ipdb; ipdb.set_trace()
+                #     target_conv1 = target.conv1[adapter_name].weight
+
                 else:
+                    import ipdb; ipdb.set_trace()
                     continue
 
                 target_lora_A.data = target_lora_A.data * 0.0
                 target_lora_B.data = target_lora_B.data * 0.0
+                
+                # target_conv1 = target_conv1.data * 0.0
+
+
+
                 if combination_type == "cat":
-                    loras_A, loras_B = [], []
+                    loras_A, loras_B, conv1 = [], [], []
+                    # import ipdb; ipdb.set_trace()
                     for adapter, weight in zip(adapters, weights):
                         # print('weights---',weights)
-                        if adapter in target.lora_A:
+                        if adapter in target.lora_A or adapter in target.conv1:
+                            # import ipdb; ipdb.set_trace()
                             current_adapter_lora_A = target.lora_A[adapter].weight
                             # print('current_adapter_lora_A----',current_adapter_lora_A.shape)
                             current_adapter_lora_B = target.lora_B[adapter].weight
+                            current_adapter_conv1 = target.conv1[adapter].weight
                         elif adapter in target.lora_embedding_A:
+                            print(HOIH)
                             current_adapter_lora_A = target.lora_embedding_A[adapter]
                             current_adapter_lora_B = target.lora_embedding_B[adapter]
+                        # elif adapter in target.conv1:
+                        #     current_adapter_conv1 = target.conv1[adapter]
                         else:
+                            print(OHIWOGHIEOW)
                             continue
                         loras_A.append(current_adapter_lora_A.data * weight * target.scaling[adapter])
                         loras_B.append(current_adapter_lora_B.data)
+                        # import ipdb; ipdb.set_trace()
+                        conv1.append(current_adapter_conv1.data * weight * target.scaling[adapter])
 
                     # print('loras_A',loras_A[0].shape)
                     # print(hey)
+
+                    # import ipdb; ipdb.set_trace()
 
                     if len(loras_A) == 0:
                         raise ValueError("No matching LoRAs found. Please raise an issue on GitHub.")
                     loras_A = torch.cat(loras_A, dim=0)
                     loras_B = torch.cat(loras_B, dim=1)
+                    conv1 = torch.cat(conv1, dim=1)
 
                     # print('loras_A--',loras_A.shape)
                     # print('loras_B--',loras_B.shape)
 
                     target_lora_A.data[: loras_A.shape[0], :] = loras_A
                     target_lora_B.data[:, : loras_B.shape[1]] = loras_B
+
+                    # import ipdb; ipdb.set_trace()
+                    target_conv1.data[:, :, :, :] = conv1
+
+                    # import ipdb; ipdb.set_trace()
                     # print('target_lora_A--',target_lora_A.shape)
                 elif combination_type in [
                     "svd",
@@ -978,6 +1171,7 @@ class LoraModel(BaseTuner):
                     "dare_ties_svd",
                     "magnitude_prune_svd",
                 ]:
+                    print(OWHIOFHJ)
                     target_lora_A.data, target_lora_B.data = self._svd_generalized_task_arithmetic_weighted_adapter(
                         combination_type,
                         adapters,
@@ -996,8 +1190,6 @@ class LoraModel(BaseTuner):
                     target_lora_A.data, target_lora_B.data = self._generalized_task_arithmetic_weighted_adapter(
                         combination_type, adapters, weights, target, density, majority_sign_method
                     )
-                # print('target_lora_A--',target_lora_A)
-                # print(hey)
 
     def _svd_generalized_task_arithmetic_weighted_adapter(
         self,

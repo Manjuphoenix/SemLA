@@ -11,9 +11,14 @@ def get_domain_args(
     split: Literal['train', 'val'],
     mode: str = "lora",
     base_model_path: str = "models/model_final.pth",
+    # base_model_path: str = "/home/Final_conv_ani/SemLA-conv_lora/catseg/acdc-rain-conv/model_final.pth",
+    # base_model_path: str = "./catseg/acdc-rain-conv/model_final.pth",
+    # base_model_path: str = "/localscratch/rbcansi/ICML/semla/catseg/acdc-rain-conv/model_final.pth",
     num_gpus: int = 1,
     get_cofing_only: bool = False,
 ):
+
+    # import ipdb; ipdb.set_trace()
     logger_names = ["detectron2", "d2", "fvcore"]
     for name in logger_names:
         logger = logging.getLogger(name)
@@ -40,21 +45,26 @@ def get_domain_args(
         "bdd",
         "mv",
         "a150",
+        "a150_conv",
         "idd",
         "pc59",
         "nyu",
         "coconutL",
         "cocostuff",
         "IE_Segmentation",
+        "IE_Segmentation_conv",
         "IE_Segmentation_ir",
         "indraeye",
         "indraeyed",
         "indraeyen",
-        "msrs_rgb",
+        "msrs",
+        "msrs_conv",
         "msrs_ir",
         "cartr",
+        "cartr_conv",
         "carti",
         "openearth",
+        "openearth_conv",
         "idd_conv",
         "cs_conv",
         "mv_conv",
@@ -124,6 +134,7 @@ def get_domain_args(
         "mv_conv": "configs/mv/mv.yaml",
         "nyu": "configs/nyu/nyu.yaml",
         "a150": "configs/a150/a150.yaml",
+        "a150_conv": "configs/a150/a150.yaml",
         "idd": "configs/idd/idd.yaml",
         "idd_conv": "configs/idd/idd.yaml",
         'pc59': 'configs/pc59/pc59.yaml',
@@ -131,6 +142,7 @@ def get_domain_args(
         'coconutL': 'configs/coconutL/coconutL.yaml',
         "cocostuff": "configs/coco/coco-stuff.yaml",
         "IE_Segmentation": "configs/indraeye/rgb/indraeye-rgb.yaml",
+        "IE_Segmentation_conv": "configs/indraeye/rgb/indraeye-rgb.yaml",
         "indraeye": "configs/indraeye/rgb/indraeye-rgb.yaml",
         "indraeyed": "configs/indraeye/rgb/indraeye-rgb.yaml",
         "indraeyen": "configs/indraeye/rgb/indraeye-rgb.yaml",
@@ -139,12 +151,15 @@ def get_domain_args(
         #     "day": f"configs/indraeye/{domain}/{sub_domain}.yaml",
         #     "night": f"configs/indraeye/{domain}/{sub_domain}.yaml",
         # },
-        "msrs_rgb": "configs/msrs/rgb/msrs-rgb.yaml",
+        "msrs": "configs/msrs/rgb/msrs-rgb.yaml",
+        "msrs_conv": "configs/msrs/rgb/msrs-rgb.yaml",
         "msrs_ir": "configs/msrs/ir/msrs-ir.yaml",
         "cartr": "configs/cart/rgb/cart-rgb.yaml",
+        "cartr_conv": "configs/cart/rgb/cart-rgb.yaml",
         "carti": "configs/cart/ir/cart-ir.yaml",
         "IE_Segmentation_ir": "configs/indraeye/ir/indraeye-ir.yaml",
-        "openearth": "configs/openearth/openearth-ir.yaml",
+        "openearth": "configs/openearth/openearth.yaml",
+        "openearth_conv": "configs/openearth/openearth.yaml",
     }
 
     datasets = {
@@ -196,6 +211,10 @@ def get_domain_args(
             "train": f"{DETECTRON2_DATASET_PATH}ADEChallengeData2016/images/training/",
             "val": f"{DETECTRON2_DATASET_PATH}ADEChallengeData2016/images/validation/",
         },
+        "a150_conv": {
+            "train": f"{DETECTRON2_DATASET_PATH}ADEChallengeData2016/images/training/",
+            "val": f"{DETECTRON2_DATASET_PATH}ADEChallengeData2016/images/validation/",
+        },
         "idd": {
             "train": f"{DETECTRON2_DATASET_PATH}IDD_Segmentation/leftImg8bit/train/",
             "val": f"{DETECTRON2_DATASET_PATH}IDD_Segmentation/leftImg8bit/val/",
@@ -213,6 +232,10 @@ def get_domain_args(
             "val": f"{DETECTRON2_DATASET_PATH}coconut-l/val2017",
         },
         "IE_Segmentation": {
+            "train": f"{DETECTRON2_DATASET_PATH}IE_Segmentation/IE_eo_ir_split/eo/train/",
+            "val": f"{DETECTRON2_DATASET_PATH}IE_Segmentation/IE_eo_ir_split/eo/val/",
+        },
+        "IE_Segmentation_conv": {
             "train": f"{DETECTRON2_DATASET_PATH}IE_Segmentation/IE_eo_ir_split/eo/train/",
             "val": f"{DETECTRON2_DATASET_PATH}IE_Segmentation/IE_eo_ir_split/eo/val/",
         },
@@ -236,7 +259,11 @@ def get_domain_args(
             "train": f"{DETECTRON2_DATASET_PATH}IE_daynight/IE_eo_ir_split/eo/rgbnight/train/",
             "val": f"{DETECTRON2_DATASET_PATH}IE_daynight/IE_eo_ir_split/eo/rgbnight/val/",
         },
-        "msrs_rgb": {
+        "msrs": {
+            "train": f"{DETECTRON2_DATASET_PATH}msrs/train/vi/",
+            "val": f"{DETECTRON2_DATASET_PATH}msrs/test/vi/rgbnight/val/",
+        },
+        "msrs_conv": {
             "train": f"{DETECTRON2_DATASET_PATH}msrs/train/vi/",
             "val": f"{DETECTRON2_DATASET_PATH}msrs/test/vi/rgbnight/val/",
         },
@@ -248,13 +275,21 @@ def get_domain_args(
             "train": f"{DETECTRON2_DATASET_PATH}cart/train/",
             "val": f"{DETECTRON2_DATASET_PATH}cart/val/",
         },
+        "cartr_conv": {
+            "train": f"{DETECTRON2_DATASET_PATH}cart/train/",
+            "val": f"{DETECTRON2_DATASET_PATH}cart/val/",
+        },
         "carti": {
             "train": f"{DETECTRON2_DATASET_PATH}cart/train/",
             "val": f"{DETECTRON2_DATASET_PATH}cart/val/",
         },
         "openearth": {
             "train": f"{DETECTRON2_DATASET_PATH}OpenEarthMap/train/",
-            "val": f"{DETECTRON2_DATASET_PATH}OpenEarthMap/val/",
+            "test": f"{DETECTRON2_DATASET_PATH}OpenEarthMap/val/",
+        },
+        "openearth_conv": {
+            "train": f"{DETECTRON2_DATASET_PATH}OpenEarthMap/train/",
+            "test": f"{DETECTRON2_DATASET_PATH}OpenEarthMap/val/",
         },
         "idd_conv": {
             "train": f"{DETECTRON2_DATASET_PATH}IDD_Segmentation/leftImg8bit/train/",
@@ -335,8 +370,12 @@ def get_domain_args(
         train_dataset_path = datasets[dataset]["normal"]["train"]
         val_dataset_path = datasets[dataset]["normal"]["val"]
     else:
-        train_dataset_path = datasets[dataset]["train"]
-        val_dataset_path = datasets[dataset]["val"]
+        if "openearth" in dataset:
+            train_dataset_path = datasets[dataset]["train"]
+            val_dataset_path = datasets[dataset]["test"]
+        else:
+            train_dataset_path = datasets[dataset]["train"]
+            val_dataset_path = datasets[dataset]["val"]
 
     args = Namespace(
         config_file=config_file,
@@ -414,7 +453,9 @@ def benchmark_catseg(model, args):
 
     cfg = setup(args)
     set_random_seed(cfg.SEED)
+    # import ipdb; ipdb.set_trace()
     res = Trainer.test(cfg, model)
+    # import ipdb; ipdb.set_trace()
     if cfg.TEST.AUG.ENABLED:
         res.update(Trainer.test_with_TTA(cfg, model))
     if comm.is_main_process():
@@ -430,6 +471,7 @@ def load_catseg_model(args, model_path: str = None):
     try:
         cfg = setup(args)
         model = Trainer.build_model(cfg)
+        # import ipdb; ipdb.set_trace()
         DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
             cfg.MODEL.WEIGHTS if model_path is None else model_path, resume=args.resume
         )

@@ -34,8 +34,8 @@ def register_dataset(root):
         #('test_rgb', 'images_detectron2/test/rgb', 'annotations_detectron2/test', CLASSES),
         #('test_irrg', 'images_detectron2/test/irrg', 'annotations_detectron2/test', CLASSES),
         #('test_irrg_official', 'images_detectron2/test/irrg', 'annotations_detectron2/test', CLASSES_OFFICIAL),
-        ('train_rgb', 'train/rgb_images', 'train/labels', CLASSES),
-        ('test_rgb', 'test/rgb_images', 'test/labels', CLASSES),
+        ('train', 'train/rgb_images', 'train/labels', CLASSES),
+        ('val', 'test/rgb_images', 'test/labels', CLASSES),
     ]:
         image_dir = os.path.join(root, image_dirname)
         gt_dir = os.path.join(root, sem_seg_dirname)

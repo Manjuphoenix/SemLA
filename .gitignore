@@ -2,6 +2,8 @@ __pycache__/
 .venv/
 wandb/
 catseg/loradb/
+catseg/loradb_OG_conv/
+catseg/loradb_lora_conv/
 catseg/datasets/
 catseg/output/
 catseg/models/

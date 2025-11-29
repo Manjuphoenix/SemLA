@@ -17,7 +17,7 @@ CLASSES = ('unlabelled',
 
 ###################RGB -> images_detectron2/test ||   -> ir/test  -- IR test data
 def register_dataset(root):
-    ds_name = 'msrs_rgb'
+    ds_name = 'msrs'
     root = os.path.join(root, 'msrs')
 
     for split, image_dirname, sem_seg_dirname, class_names in [

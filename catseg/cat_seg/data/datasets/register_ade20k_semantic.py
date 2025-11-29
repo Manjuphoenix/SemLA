@@ -199,7 +199,7 @@ def register_all_ade20k_panoptic(root):
         )
 
 def register_all_ade20k_semantic(root):
-    root = os.path.join(root, "ADE20k")
+    root = os.path.join(root, "ADEChallengeData2016")
     for name, dirname in [("train", "training"), ("val", "validation")]:
         image_dir = os.path.join(root, "images", dirname)
         gt_dir = os.path.join(root, "annotations_detectron2", dirname)

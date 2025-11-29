@@ -269,7 +269,7 @@ class DomainOrchestrator:
                 current_target_domain,
             )
 
-            weight_dict, merged_adpater_name = self._merge(
+            weight_dict, merged_adpater_name, conv_merged_name = self._merge(
                 current_target_domain,
                 remove_target_adapter,
                 mode,
@@ -278,8 +278,14 @@ class DomainOrchestrator:
 
             weights.update({current_target_domain.name: weight_dict})
 
+            # result_dict = self._benchmark_on_current_target_domain(
+            #     name=merged_adpater_name,
+            #     target_domain=current_target_domain
+            # )
+
+
             result_dict = self._benchmark_on_current_target_domain(
-                name=merged_adpater_name,
+                name=conv_merged_name,
                 target_domain=current_target_domain
             )
 
@@ -294,8 +300,10 @@ class DomainOrchestrator:
             )
 
             # Delete the adapter so we can add another with the same name but different weights (remove unused adapters)
-            print(f"Deleting adapter {merged_adpater_name}.")
-            self.current_model.delete_adapter(merged_adpater_name)
+            # print(f"Deleting adapter {merged_adpater_name}.")
+            # self.current_model.delete_adapter(merged_adpater_name)
+            print(f"Deleting adapter {conv_merged_name}.")
+            self.current_model.delete_adapter(conv_merged_name)
 
             print("\n")
 
@@ -308,7 +316,8 @@ class DomainOrchestrator:
         remove_target_adapter: bool,
         mode: Literal["uniform", "centroid"],
         target_embedding=None,
-        softmax_temperature: int | None = 0.05,
+        # softmax_temperature: int | None = 0.05,
+        softmax_temperature: int = 0.05,
         top_k: int = 5,  # number of domains to merge
         combination_type: str = "cat",
         similarity_measure: Callable[
@@ -340,16 +349,51 @@ class DomainOrchestrator:
             domain_weight_mapping = {domain.name: weight for domain, weight in zip(source_domains, weights)}
 
             merged_name = ""
+            conv_merged_name = ""
+            conv_weights = []
+            normal_weights = []
+            closest_names_normal = []
+            closest_names_conv = []
+            active_adapters_new = []
+            # for n, w in domain_weight_mapping.items():
+            #     merged_name += f"_{n}_{str(w).replace('.','_')}"
+            # merged_name += f"_{combination_type}_{target_domain.name}" # Create a unique name for merged adapter so that it does not override existing adapters
+
+
             for n, w in domain_weight_mapping.items():
-                merged_name += f"_{n}_{str(w).replace('.','_')}"
+                # merged_name += f"_{n}_{str(w).replace('.','_')}"
+                # import ipdb; ipdb.set_trace(context=10)
+                ##################################################
+                if "conv" in n:
+                    conv_merged_name += f"_{n}_{str(w).replace('.','_')}"
+                    conv_weights.append(w)
+                    closest_names_conv.append(n)
+                    active_adapters_new.append(n)
+                else:
+                    merged_name += f"_{n}_{str(w).replace('.','_')}"
+                    closest_names_normal.append(n)
+                    normal_weights.append(w)
+                    active_adapters_new.append(n)
+                ###################################################
             merged_name += f"_{combination_type}_{target_domain.name}" # Create a unique name for merged adapter so that it does not override existing adapters
+            conv_merged_name += f"_{combination_type}_{target_domain.name}" # Create a unique name for merged adapter so that it does not override existing adapters
+            
 
             self._merge_adapters(
                 merge_domains=[domain.name for domain in source_domains],
                 weights=weights,
-                merged_name=merged_name,
+                merged_name=conv_merged_name,
                 combination_type=combination_type
             )
+
+
+
+            # self._merge_adapters(
+            #     merge_domains=[domain.name for domain in source_domains],
+            #     weights=weights,
+            #     merged_name=merged_name,
+            #     combination_type=combination_type
+            # )
 
         elif mode == "centroid":
 
@@ -376,21 +420,61 @@ class DomainOrchestrator:
             }
 
             merged_name = ""
+            conv_merged_name = ""
+            conv_weights = []
+            normal_weights = []
+            closest_names_normal = []
+            closest_names_conv = []
+            active_adapters_new = []
             for n, w in domain_weight_mapping.items():
-                merged_name += f"_{n}_{str(w).replace('.','_')}"
+                # merged_name += f"_{n}_{str(w).replace('.','_')}"
+                # import ipdb; ipdb.set_trace(context=10)
+                ##################################################
+                if "conv" in n:
+                    conv_merged_name += f"_{n}_{str(w).replace('.','_')}"
+                    conv_weights.append(w)
+                    closest_names_conv.append(n)
+                    active_adapters_new.append(n)
+                else:
+                    merged_name += f"_{n}_{str(w).replace('.','_')}"
+                    closest_names_normal.append(n)
+                    normal_weights.append(w)
+                    active_adapters_new.append(n)
+                ###################################################
             merged_name += f"_{combination_type}_{target_domain.name}" # Create a unique name for merged adapter so that it does not override existing adapters
+            conv_merged_name += f"_{combination_type}_{target_domain.name}" # Create a unique name for merged adapter so that it does not override existing adapters
+            # import ipdb; ipdb.set_trace(context=10)
 
+            
             self._merge_adapters(
-                merge_domains=k_closest_names,
-                weights=weights,
-                merged_name=merged_name,
+                merge_domains=closest_names_conv,
+                weights=conv_weights,
+                merged_name=conv_merged_name,
                 combination_type=combination_type
             )
 
-        print(f"Setting {merged_name} as the active adapter.\n")
-        self.current_model.set_adapter(merged_name)
+            # self._merge_adapters(
+            #     merge_domains=closest_names_normal,
+            #     weights=normal_weights,
+            #     merged_name=merged_name,
+            #     combination_type=combination_type
+            # )
 
-        return domain_weight_mapping, merged_name
+        #############OG##############
+            # self._merge_adapters(
+            #     merge_domains=k_closest_names,
+            #     weights=weights,
+            #     merged_name=merged_name,
+            #     combination_type=combination_type
+            # )
+
+        print(f"Setting {conv_merged_name} as the active adapter.\n")
+        # self.current_model.set_adapter(merged_name, conv_merged_name)
+        # self.current_model.set_adapter(active_adapters_new)
+        self.current_model.set_adapter(conv_merged_name)
+        # self.current_model.set_adapter(merged_name)
+
+        return domain_weight_mapping, merged_name, conv_merged_name
 
     def _merge_adapters(
         self,
@@ -404,9 +488,14 @@ class DomainOrchestrator:
         """
         
         print(f"Merging domains with weights:")
+
+        # import ipdb; ipdb.set_trace(context=10)
         for n, w in zip(merge_domains, weights):
             print(f"{n}: {w}", end=", ")
         print("")
+
+
+        # import ipdb; ipdb.set_trace(context=10)
 
         self.current_model.add_weighted_adapter(
             merge_domains,
@@ -518,7 +607,8 @@ class DomainOrchestrator:
         self,
         target_domains: list[str],
         remove_target_adapter: bool = False,
-        softmax_temperature: int | None = 0.05,
+        # softmax_temperature: int | None = 0.05,
+        softmax_temperature: int = 0.05,
         top_k: int = 5,  # number of domains to merge
         combination_type: str = "cat",
         similarity_measure: Callable[
@@ -566,7 +656,7 @@ class DomainOrchestrator:
 
                     current_embedding = self.embedding_manager.embed_image(input_path)
 
-                    weight_dict, merged_adpater_name = self._merge(
+                    weight_dict, merged_adpater_name, conv_mergeed_name = self._merge(
                         target_domain=current_target_domain,
                         remove_target_adapter=remove_target_adapter,
                         mode="centroid", 
@@ -593,7 +683,8 @@ class DomainOrchestrator:
                     else:
                         _ = evaluator.process_image(inputs, outputs)
 
-                    self.current_model.delete_adapter(merged_adpater_name)
+                    # self.current_model.delete_adapter(merged_adpater_name)
+                    self.current_model.delete_adapter(conv_mergeed_name)
 
             print(f"Benchmarking on domain '{current_target_domain.name}' ...")
             result_dict = evaluator.evaluate()

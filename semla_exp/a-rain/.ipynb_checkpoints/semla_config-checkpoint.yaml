@@ -1,0 +1,5 @@
+distance_measure_name: euclidean  #  cosine or euclidean
+temperature: 0.05
+top_k: 3
+combination_type: cat
+

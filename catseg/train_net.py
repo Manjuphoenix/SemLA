@@ -952,6 +952,8 @@ def main(args):
         # print(HEY)
         # trainer.model.print_trainable_parameters()
 
+
+    # trainer.resume_or_load(resume=args.resume)
     output = trainer.train()
     trainer.model.print_trainable_parameters()
 
